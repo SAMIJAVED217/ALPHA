@@ -1,0 +1,65 @@
+# ── ALPHA — what never belongs in the repository ─────────────────────────────
+# Everything listed here is created by the app on first run. A fresh clone with
+# none of it present boots straight to the setup screen, which is the intended
+# first experience — so nothing here needs to be committed, and some of it must
+# never be.
+#
+# Git has no inline comments. Text after a pattern on the same line becomes part
+# of the pattern and silently stops it matching, so comments go on their own line.
+
+# ── Secrets. Committing any of these publishes them. ──────────────────────────
+# Your Gemini API key, plus per-plugin credentials
+config/api_keys.json
+# The dashboard's TLS private key and certificate
+config/certs/
+# A LINKED WhatsApp session: committing it hands somebody your WhatsApp account
+config/whatsapp_web/
+# Google OAuth tokens and client secrets (Gmail / Calendar plugins)
+*token*.json
+*client_secret*.json
+*credentials*.json
+.env
+.env.*
+
+# ── Personal data the assistant accumulates about you ─────────────────────────
+memory/long_term.json
+memory/*.db
+# Your timetable and deadlines
+config/alpha_dashboard.json
+
+# ── Local backups of earlier versions ─────────────────────────────────────────
+*.original
+*.before-*
+
+# ── Downloaded models and voices ──────────────────────────────────────────────
+providers/voices/
+
+# ── Python build noise ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Editors and operating systems ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Runtime output ────────────────────────────────────────────────────────────
+*.log
+logs/
+downloads/
+screenshots/
