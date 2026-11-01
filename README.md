@@ -1,129 +1,313 @@
+<div align="center">
+
 # APLHA
 
-**A voice-first personal AI companion for Windows that can see, remember and act on your computer, with a safety gate the AI cannot press for itself.**
+**A voice-first AI companion for Windows that can see, remember and act on your computer,<br>with a safety gate the AI cannot press for itself.**
 
-*Written APLHA, spoken "Alpha". The code and folders use `alpha`.*
+*Written APLHA, spoken "Alpha".*
 
-![APLHA's holographic stage](assets/screenshot.png)
+![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-11-0078D4)
+![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
+![AI](https://img.shields.io/badge/AI-Gemini%20Live-4285F4)
+![Tests](https://img.shields.io/badge/Automated%20tests-557-2EA44F)
+![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
-APLHA is a desktop assistant built with Python, PySide6 and the Gemini Live API. You talk to it, and it talks back in real time. It can open apps, handle files, read PDFs, set reminders, control the volume, watch a web page and send messages, while a live figure of light reacts to its voice.
+![APLHA's live stage reacting to a voice](assets/demo.gif)
 
-Most assistants either only chat, or can act but are trusted blindly. APLHA is built around one idea: **a language model can ask, but only a person can approve.**
+<sub>Recorded from the real graphics engine, reacting to a simulated voice level.</sub>
+
+[What it does](#what-it-does) · [Safety](#the-safety-gate) · [Architecture](#architecture) · [Install](#install) · [Engineering stories](#engineering-stories) · [Verified or not](#what-has-really-been-verified) · [FAQ](#faq)
+
+</div>
+
+## Why APLHA exists
+
+Most assistants either only chat, or can act but are trusted blindly. APLHA is built around one idea:
+
+> **A language model can ask, but only a person can approve.**
+
+You talk to it, and it answers aloud in real time. It opens apps, handles files, reads PDFs, sets reminders and sends messages. Everyday commands run straight away. Anything sensitive waits for a real press of a button, and no AI output can fake that press.
 
 ## What it does
 
-| Area | What you can do |
+<sub>Click a section to open it.</sub>
+
+<details>
+<summary><b>Conversation</b>: real-time voice, hands-free and interrupting</summary>
+
+- Spoken replies in real time through the Gemini Live API
+- Hands-free: just speak, or say "hey" or "hi"
+- Hold-to-talk on a key, or type
+- Press Esc to stop a reply at once
+- Choose from four AI voices through characters you add yourself
+</details>
+
+<details>
+<summary><b>Computer control</b>: apps, windows, volume and power</summary>
+
+| Say | What happens |
 | --- | --- |
-| **Conversation** | Real-time spoken replies, typing, hands-free talking, hold-to-talk, and Esc to stop a reply |
-| **Computer control** | Open apps and websites, manage windows, type, press keys, set volume and brightness, lock, sleep, shut down |
-| **Files** | List, find, read, move, rename, copy and organise files, with undo. Delete sends to the Recycle Bin after CONFIRM |
-| **Documents** | Read PDFs and text files, and send photos to Gemini |
-| **Daily life** | Reminders, weather, news headlines, a morning briefing and clipboard help |
-| **Messages** | WhatsApp sending tested for real. KakaoTalk, Telegram, Discord, Slack and Teams use the same route, not yet tested on the real apps |
-| **Web watching** | Checks a page every 15 minutes and alerts you to new lines that match your words |
-| **Memory** | Long-term memory you can view, search, edit, export and delete, plus an About me profile |
-| **Seeing** | Shares the screen or camera only while you switch it on |
-| **Languages** | About 100 languages to choose from, or matching how you speak, with what each engine supports shown in the app |
-| **Connections** | Optional Notion, Gmail and Grok |
-| **Interface** | A live scene drawn on the graphics chip, with energy waves that follow the voice |
+| "Open Notepad and type hello" | Opens the app and types, then reports the result |
+| "Set the volume to 40" | Sets it, reads it back, and can be undone |
+| "Close that window" | Asks the app politely, so it can offer to save |
+| "Lock the computer" | Locks straight away |
+| "Shut down" | Waits for CONFIRM, then counts down 30 seconds |
+</details>
 
-## Built for safety
+<details>
+<summary><b>Files and documents</b>: find, read, organise and undo</summary>
 
-- **The model cannot approve itself.** A CONFIRM can only come from a real mouse press on the on-screen button. No tool can do it.
-- **Sensitive actions always ask.** Sending to other people, deleting, shutting down, clicking at a screen position, and anything mentioning money or passwords.
-- **Outside text is treated as data.** After APLHA reads a page, email or file, actions that would normally run straight away need CONFIRM again, so a page cannot quietly give it instructions.
-- **Live inputs are always shown.** The main screen always shows when the microphone is live, and a red pill shows when your voice is being sent.
-- **Keys stay out of files.** API keys are kept in the Windows Credential Manager.
-- **Results are reported honestly.** APLHA reads settings back after changing them, and says when it could not confirm something.
-- **Risky native code is isolated.** Speech, volume and window reading run in separate helper processes, so a crash there costs one feature, not the app.
+- List, find, read, move, rename, copy and organise files
+- Read PDFs and text files, and send photos to Gemini
+- Nothing is ever overwritten
+- Undo reverses moves, renames, copies and whole-folder organising
+- Deleting goes to the Recycle Bin after CONFIRM
+- System folders and folders you list are off limits
+</details>
 
-## What you need
+<details>
+<summary><b>Daily life</b>: reminders, weather, news and a morning briefing</summary>
 
-| Requirement | Details |
+- "Remind me in 20 minutes to call home"
+- "What's the weather in Seoul?"
+- Top headlines, on any topic
+- A short spoken briefing on the first start each day
+- "Translate what I copied" or "fix the text on my clipboard"
+- Music and video from YouTube in your browser, with pause and skip
+</details>
+
+<details>
+<summary><b>Memory and personalisation</b>: it learns who you are</summary>
+
+- An About me profile, read at the start of each conversation
+- Long-term memory you can view, search, edit, export and delete
+- Sensitive details are never saved silently
+- Your own characters and pictures, kept private on your computer
+</details>
+
+<details>
+<summary><b>Web watching</b>: alerts for what you care about</summary>
+
+Say "watch this page for exam and scholarship". APLHA checks every 15 minutes and alerts you to new lines that match. Pages that need a sign-in are read from your open browser tab, so no password is stored. The page's text goes only to you, never to the AI, so a page cannot give it instructions.
+</details>
+
+<details>
+<summary><b>Connections and languages</b>: Notion, Gmail, Grok and 100 languages</summary>
+
+- Optional Notion, Gmail and Grok, with keys kept in the Windows Credential Manager
+- Message sending through desktop apps. WhatsApp is tested for real
+- 100 languages to choose from, or matching how you speak
+- The app shows what each speech engine supports for your choice
+</details>
+
+## The safety gate
+
+A CONFIRM can only come from a real mouse press, which the code proves with an object only that press can create. The model has no tool that can make one.
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant AI as Gemini
+    participant Gate as Safety gate
+    participant PC as Your computer
+    You->>AI: "Send Ali a message saying I'm late"
+    AI->>Gate: Proposes the action
+    Gate-->>You: Shows a CONFIRM card with the exact text
+    Note over AI,Gate: The AI cannot press it
+    You->>Gate: Real mouse press
+    Gate->>PC: Carries it out
+    PC-->>AI: Reports the true result
+```
+
+<details>
+<summary><b>What runs at once, and what always asks</b></summary>
+
+| Runs at once | Always waits for CONFIRM |
 | --- | --- |
-| **System** | Windows. Tested only on Windows 11 |
-| **Python** | 3.11, 3.12 or 3.13 |
-| **Graphics** | OpenGL 3.3. Tested on integrated AMD graphics, with a simpler fallback for machines without it |
-| **Gemini API key** | From [Google AI Studio](https://aistudio.google.com/apikey). Entered on first run |
-| **Hardware** | A microphone and speakers for voice. Typing also works |
-| **Internet** | Needed for replies, because Gemini does the thinking |
-| **Optional** | Notion token, Google OAuth client for Gmail, and xAI key for Grok |
+| Opening apps and websites | Sending messages and email |
+| Moving, renaming and copying files | Deleting files |
+| Volume, brightness and windows | Shutting down and restarting |
+| Typing into an untitled window | Typing into a named file |
+| Reminders, weather and news | Mouse clicks at a screen position |
+| | Anything mentioning money or passwords |
+
+**Outside text is treated as data.** After APLHA reads a page, email or file, even everyday actions need CONFIRM until you speak again. A hidden instruction on a page therefore cannot quietly act on your computer.
+</details>
+
+<details>
+<summary><b>Other protections</b></summary>
+
+- The main screen always shows when the microphone is live, and a red pill shows when your voice is being sent
+- API keys stay in the Windows Credential Manager, never in a file
+- Results are read back where possible, and APLHA says when it could not confirm something
+- Words from the AI never go inside a command string
+</details>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Mic[Microphone] --> Hub[Audio hub]
+    Hub --> Talk[Conversation thread]
+    Keys[Typing and files] --> Talk
+    Talk <--> Gemini[Gemini Live API]
+    Talk --> Tools[64 tools]
+    Tools --> Gate[Safety gate]
+    Gate --> PC[Windows]
+    Tools --> Memory[(Memory)]
+    Talk --> Speaker[Speakers]
+    Talk --> Stage[OpenGL stage]
+    Helpers[Helper processes: wake word, speech, voice, volume, window reading] <--> Talk
+```
+
+<details>
+<summary><b>How it is built</b></summary>
+
+| Part | Approach |
+| --- | --- |
+| **Interface** | PySide6, with one custom OpenGL fragment shader drawing the whole scene live |
+| **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
+| **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
+| **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
+| **Tools** | 64 declared tools, of which 7 always ask and 12 run at once only when judged safe |
+
+```text
+alpha/
+  ui/          Interface, live graphics, panels and the CONFIRM card
+  voice/       Gemini session, hands-free logic and offline speech
+  audio/       Microphone, speaker and level measurement
+  tools/       Everything the assistant can do
+  actions.py   The safety gate
+  memory.py    Long-term memory
+  watchdog.py  Page watching
+tests/         557 automated tests
+docs/          Requirements, licences and verification record
+```
+</details>
 
 ## Install
 
-In PowerShell, from the project folder:
+| You need | Details |
+| --- | --- |
+| **System** | Windows. Tested only on Windows 11 |
+| **Python** | 3.11, 3.12 or 3.13 |
+| **Graphics** | OpenGL 3.3, with a simpler fallback. Tested on integrated AMD graphics |
+| **Gemini API key** | From [Google AI Studio](https://aistudio.google.com/apikey), entered on first run |
+| **Hardware** | A microphone and speakers for voice. Typing also works |
+| **Internet** | Needed for replies, because Gemini does the thinking |
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
-This creates a private Python environment, downloads the offline speech models and adds a desktop shortcut. To use a specific Python, add `-Python "C:\path\to\python.exe"`.
+Open APLHA from the desktop shortcut, enter your key, and choose your devices.
 
-## First run
+<details>
+<summary><b>Controls</b></summary>
 
-Open APLHA from the desktop shortcut, enter your Gemini key, and choose your microphone and speakers.
+| Control | What it does |
+| --- | --- |
+| **F9** | Hold to talk. Change the key in Settings |
+| **Esc** | Stops a reply, or leaves fullscreen |
+| **F11** | Fullscreen |
+| **Left arrow or MESSAGES** | Log, typing box and files |
+| **Right arrow or status button** | Readings, characters and controls |
+| **More menu** | About me, connections, language, briefing, start with Windows |
+</details>
 
-- **Talk:** hold **F9**, or the key you chose in Settings, while APLHA is in front.
-- **Hands-free:** on by default once set up. Just speak, or say "hey" or "hi". Anything said clearly nearby goes to Gemini, including other voices and the TV. Turning it off is remembered.
-- **Panels:** the left arrow or MESSAGES opens the log, typing box and files. The right arrow or the status button opens readings, characters and controls.
-- **Esc:** stops a reply, or leaves fullscreen.
+## Engineering stories
 
-Try saying:
+Real problems found by running the app, not by reading the code.
 
-- "Remind me in 20 minutes to call home."
-- "What's the weather in Seoul?"
-- "Organise my Downloads folder." Then say "undo".
-- "Read my lecture PDF and summarise it."
-- "Translate what I copied."
-- "Watch this page for exam and scholarship."
+<details>
+<summary><b>The wake word that heard ghosts</b></summary>
 
-## How it is built
+Short words like "hey" were being detected in room noise about every 20 seconds, and each false trigger sent a few seconds of noise to Gemini. **Fix:** a wake word now counts only with clear speech behind it, and APLHA ignores wake words while it is speaking.
+</details>
 
-```text
-alpha/
-  ui/       Interface, live graphics, panels and the CONFIRM card
-  voice/    Gemini Live session, hands-free logic and offline speech
-  audio/    Microphone, speaker and level measurement
-  tools/    Everything the assistant can do
-  actions.py    The safety gate
-  memory.py     Long-term memory
-  watchdog.py   Page watching
-tests/      Automated tests
-docs/       Requirements, licences and verification record
-```
+<details>
+<summary><b>The photo that was "sent" but never seen</b></summary>
 
-- **Interface:** PySide6 with a custom OpenGL fragment shader, keeping idle processor use low on integrated graphics.
-- **Conversation:** the Gemini Live API over a session running on its own thread, so the interface never waits on the network.
-- **Offline speech:** Vosk for listening for wake words, Whisper for recognition and Windows voices for speech, each in its own process.
-- **Safety:** a gate that needs a proof object only the real button press can create.
+The app said a photo was sent, and automated tests passed, yet real Gemini said it saw nothing. Pictures and text were travelling on separate channels. **Fix:** they now go together, and real Gemini named the shapes and colours in a test picture.
+</details>
 
-## Tests
+<details>
+<summary><b>Crashes from Python's memory clean-up</b></summary>
+
+Python could clean up interface objects from a background thread, which crashed Qt. **Fix:** clean-up runs only on the interface thread, and the tests enforce it.
+</details>
+
+<details>
+<summary><b>Making fancy graphics cheap</b></summary>
+
+The first version idled above 30% of a processor core. **Fix:** rendering moved to the graphics chip, and expensive drawing runs only where it can be seen. Idle use with hands-free off was measured at about 10 to 20% of one core, on integrated graphics.
+</details>
+
+<details>
+<summary><b>Fullscreen that hid its own menus</b></summary>
+
+True fullscreen with OpenGL hid every menu, trapping the user. Leaving it then lost the title bar. **Fix:** a thin window border keeps menus visible, and the window's style is saved and restored by hand.
+</details>
+
+<details>
+<summary><b>Typing that replaced a selection</b></summary>
+
+In a real test, typing landed in a restored document and replaced selected text. It was undone. **Fix:** typing into any window showing a named file now needs CONFIRM.
+</details>
+
+## What has really been verified
+
+Claims here are tested, not assumed. [docs/VERIFICATION.md](docs/VERIFICATION.md) has the full record.
+
+| Status | Features |
+| --- | --- |
+| **Seen working for real** | Voice conversation, hands-free, Esc, fullscreen, opening apps, typing, volume, music, weather, news, clipboard, memory, photos, WhatsApp sending, language replies |
+| **Automated tests only** | Reminders, moving and organising files, Gmail, Notion, Grok, other messaging apps, page watching |
+| **Not yet tested for real** | Screen and camera questions, shutdown and restart |
+
+Tests use a temporary folder, a throwaway key store and pretend sound devices:
 
 ```powershell
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 .venv\Scripts\python -m pytest
 ```
 
-Tests use a temporary folder, a throwaway key store and pretend sound devices, so they cannot reach your microphone, settings, keys or the internet. `scripts\dev_run.py` runs the real app against a pretend Gemini, with no key.
+## FAQ
 
-[docs/VERIFICATION.md](docs/VERIFICATION.md) separates what was seen working in the real app from what has automated tests only.
+<details>
+<summary><b>Does it work offline?</b></summary>
 
-## Privacy
+Not fully. Listening and the voice can run on your computer, but Gemini does the thinking, so replies need the internet.
+</details>
 
-Your messages, your voice while a turn is active, and any picture you share go to Google through the Gemini API. Your About me goes with each session, and memories go only when recalled. Weather requests go to Open-Meteo and news requests to Google News. Text from watched pages stays on your computer.
+<details>
+<summary><b>What gets sent to Google?</b></summary>
 
-## Limitations
+Your messages, your voice during a turn, pictures you share, your About me at the start of each session, and memories when recalled. With hands-free on, anything said clearly nearby is sent, including other voices. Watched page text stays on your computer.
+</details>
 
-- Windows only, and tested on one laptop.
-- Gemini does the thinking, so there is no fully offline mode yet.
-- Page watching and reminders work only while APLHA is open.
-- Text in scanned PDFs cannot be read.
-- Offline voices depend on the languages installed in Windows.
+<details>
+<summary><b>Does it support every language?</b></summary>
+
+100 can be chosen, and 18 have had a real reply so far. Offline voices depend on what Windows has installed.
+</details>
+
+<details>
+<summary><b>Can I add my own character?</b></summary>
+
+Yes. Add it to `assets/characters/extra_characters.json`, with a picture of the same name beside it. That folder is not published.
+</details>
 
 ## Roadmap
 
-Other AI providers and local models, plugins, keeping a conversation after a dropped connection, and a Windows installer.
+- [ ] Other AI providers and local models
+- [ ] Plugins
+- [ ] Keeping a conversation after a dropped connection
+- [ ] A Windows installer
+- [x] Reminders, file handling and PDF reading
+- [x] 100 languages
 
 ## Licence
 
-See [LICENSE](LICENSE). Library licences are listed in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md). The figure artwork was made with Canva AI.
+See [LICENSE](LICENSE). Library licences are in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md). The figure artwork was made with Canva AI.
