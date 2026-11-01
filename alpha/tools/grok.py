@@ -81,7 +81,8 @@ class GrokClient:
             raise ToolRefused(f"{self.name} could not be reached ({type(error).__name__}).") from error
         if response.status_code >= 400 and "credit" in response.text.lower():
             raise ToolRefused(f"{self.name} says this account has no credits left.")
-        if response.status_code in (401, 403):
+        refused = response.status_code in (401, 403) or (response.status_code == 400 and "key" in response.text.lower())
+        if refused:
             raise ToolRefused(f"{self.name} refused the key. Check it under Settings, Connections.")
         if response.status_code == 429:
             raise ToolRefused(f"{self.name} says the usage limit has been reached. Try again later.")
@@ -135,27 +136,39 @@ def groq_client(load_key=lambda: keystore.load_secret(GROQ_KEY_ACCOUNT), transpo
 
 
 class SecondAI:
-    """Uses xAI when its key is saved, otherwise Groq."""
+    """Tries xAI when its key is saved, then Groq, so a refused key does not end the answer."""
 
     def __init__(self, xai: GrokClient | None = None, groq: GrokClient | None = None):
         self._xai = xai or GrokClient()
         self._groq = groq or groq_client()
-
-    def _chosen(self) -> GrokClient:
-        return self._xai if self._xai.connected() else self._groq
+        self._answered_by = ""
 
     @property
     def name(self) -> str:
-        return self._chosen().name
+        return self._answered_by or self._in_order()[0].name
+
+    def _in_order(self) -> list[GrokClient]:
+        return [client for client in (self._xai, self._groq) if client.connected()] or [self._groq]
 
     def connected(self) -> bool:
-        return self._chosen().connected()
+        return self._xai.connected() or self._groq.connected()
+
+    def _first_that_answers(self, call) -> str:
+        clients = self._in_order()
+        for client in clients:
+            self._answered_by = client.name
+            try:
+                return call(client)
+            except ToolRefused:
+                if client is clients[-1]:
+                    raise
+        raise ToolRefused("No second AI is connected.")
 
     def ask(self, question: str, instruction: str = "") -> str:
-        return self._chosen().ask(question, instruction)
+        return self._first_that_answers(lambda client: client.ask(question, instruction))
 
     def stand_in(self, question: str) -> str:
-        return self._chosen().stand_in(question)
+        return self._first_that_answers(lambda client: client.stand_in(question))
 
 
 def grok_tools(client) -> list[Tool]:

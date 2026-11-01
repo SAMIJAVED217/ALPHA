@@ -134,15 +134,39 @@ def test_groqs_free_limit_is_explained():
         answering_groq(status=429).check()
 
 
-def test_xai_is_used_when_both_keys_are_saved():
-    second = SecondAI(GrokClient(lambda: "k"), answering_groq())
-    assert second.name == "Grok"
+def test_xai_is_tried_first_when_both_keys_are_saved():
+    grok = client_answering(body={"choices": [{"message": {"content": "From Grok"}}]})
+    second = SecondAI(grok, answering_groq())
+    assert second.ask("hello") == "From Grok" and second.name == "Grok"
 
 
 def test_groq_is_used_when_only_its_key_is_saved():
     second = SecondAI(GrokClient(lambda: ""), answering_groq())
     assert second.name == "Groq" and second.connected()
     assert second.ask("hello") == "From Groq"
+
+
+def bad_key_client():
+    def reply(request):
+        return httpx.Response(400, json={"error": "Incorrect API key provided"})
+
+    return GrokClient(lambda: "wrong", httpx.MockTransport(reply))
+
+
+def test_a_refused_xai_key_falls_through_to_groq_and_names_it():
+    second = SecondAI(bad_key_client(), answering_groq())
+    assert second.ask("hello") == "From Groq" and second.name == "Groq"
+
+
+def test_with_both_refused_the_last_reason_is_shown():
+    second = SecondAI(bad_key_client(), answering_groq(status=401))
+    with pytest.raises(ToolRefused, match="Groq refused"):
+        second.ask("hello")
+
+
+def test_a_bad_key_says_so_rather_than_showing_error_400():
+    with pytest.raises(ToolRefused, match="refused the key"):
+        bad_key_client().check()
 
 
 def test_with_neither_key_nothing_is_connected():

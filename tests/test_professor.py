@@ -857,6 +857,23 @@ def test_a_short_limit_that_mentions_days_is_only_waited_for():
     assert [call[0] for call in gemini.calls] == ["first", "first"]
 
 
+def test_a_model_that_stays_busy_moves_to_the_next_and_says_so():
+    gemini, waits = Gemini([Failure(503), Failure(503), Failure(503)]), []
+    model = spare_model(gemini, waits)
+    assert model.ask("s", [], "hello")
+    assert [call[0] for call in gemini.calls] == ["first", "first", "first", "second"]
+    assert any("too busy, so switching to second" in message for message in waits)
+
+
+def test_gemini_is_told_when_more_slides_are_coming(tmp_path):
+    gemini = Gemini()
+    lesson = lesson_of(tmp_path, gemini, pages=8)
+    lesson.teach_next()
+    assert "do not give a summary" in gemini.calls[-1][1][-1]["parts"][-1]["text"]
+    lesson.teach_next()
+    assert "do not give a summary" not in gemini.calls[-1][1][-1]["parts"][-1]["text"]
+
+
 def test_a_used_up_day_is_not_waited_out():
     slept = []
     gemini = Gemini([UsedUp()])

@@ -99,6 +99,11 @@ class ProfessorModel:
                 if code in _TRY_AGAIN_CODES and attempt < MOST_TRIES:
                     self._count_down(self._wait_for(error, attempt), attempt)
                     continue
+                if code in _TRY_AGAIN_CODES and self._spare:
+                    self._on_wait(f"{self.model} is too busy, so switching to {self._spare[0]}.")
+                    self.model = self._spare.pop(0)
+                    attempt = 0
+                    continue
                 if code in _TRY_AGAIN_CODES:
                     raise TeachingError("Gemini is still busy. Your place is kept, so try again in a minute.") from error
                 if code == 400 and has_files:

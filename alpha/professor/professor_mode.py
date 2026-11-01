@@ -339,6 +339,8 @@ class Lesson:
             f"Lecture: {self.lecture}. Goal: {self.goal}. Teach slides {first}–{last} using the slide-by-slide "
             f"protocol. The attached pages are slides {first} to {last} in order. Total slides: {self.total}."
         )
+        if last < self.total:
+            instruction += " More slides follow, so do not give a summary, abbreviation table or questions yet."
         try:
             answer = self._model.ask(self._system_now, self._history, instruction, slide_loader.as_files(chosen))
         except SlidesRefused:
