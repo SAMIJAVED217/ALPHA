@@ -10,6 +10,7 @@ import sys
 
 LONGEST_SIDE = 1280
 JPEG_QUALITY = 80
+READING_QUALITY = 92
 CAMERA_WARM_UP_FRAMES = 8
 
 
@@ -41,12 +42,13 @@ def grab_camera():
 def main(source: str) -> None:
     import cv2
 
-    picture = grab_screen() if source == "screen" else grab_camera()
+    reading = source == "reading"  # Small text stays sharp when a screen is to be read word by word.
+    picture = grab_screen() if source in ("screen", "reading") else grab_camera()
     height, width = picture.shape[:2]
     scale = LONGEST_SIDE / max(height, width)
-    if scale < 1:
+    if scale < 1 and not reading:
         picture = cv2.resize(picture, (int(width * scale), int(height * scale)), interpolation=cv2.INTER_AREA)
-    ok, encoded = cv2.imencode(".jpg", picture, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+    ok, encoded = cv2.imencode(".jpg", picture, [cv2.IMWRITE_JPEG_QUALITY, READING_QUALITY if reading else JPEG_QUALITY])
     if not ok:
         raise RuntimeError("the picture could not be encoded")
     sys.stdout.buffer.write(encoded.tobytes())

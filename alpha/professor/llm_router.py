@@ -53,11 +53,32 @@ class ProfessorModel:
         parts = [{"inline_data": {"data": data, "mime_type": kind}} for data, kind in files]
         contents = [{"role": role, "parts": [{"text": said}]} for role, said in history]
         contents.append({"role": "user", "parts": [*parts, {"text": text}]})
+        response = self._call(contents, {"system_instruction": system}, bool(files))
+        if response.text:
+            return response.text
+        raise TeachingError("Gemini sent back an empty answer. Try again.")
+
+    def speech(self, text: str, voice: str) -> tuple[bytes, str]:
+        """The sound for some text, with its kind, from a speech model."""
+        key = self._load_key()
+        if not key:
+            raise TeachingError("Add your Gemini key in Settings first.")
+        self._client = self._client or self._make_client(key)
+        config = {
+            "response_modalities": ["AUDIO"],
+            "speech_config": {"voice_config": {"prebuilt_voice_config": {"voice_name": voice}}},
+        }
+        response = self._call(text, config, False)
+        try:
+            sound = response.candidates[0].content.parts[0].inline_data
+            return sound.data, sound.mime_type or ""
+        except (AttributeError, IndexError, TypeError) as error:
+            raise TeachingError("Gemini sent back no sound.") from error
+
+    def _call(self, contents, config: dict, has_files: bool):
         for attempt in range(1, MOST_TRIES + 1):
             try:
-                response = self._client.models.generate_content(
-                    model=self._model, contents=contents, config={"system_instruction": system}
-                )
+                return self._client.models.generate_content(model=self._model, contents=contents, config=config)
             except Exception as error:
                 code = getattr(error, "code", None)
                 log.warning("Gemini call failed: %s %s", type(error).__name__, code)
@@ -68,10 +89,7 @@ class ProfessorModel:
                     continue
                 if code in _TRY_AGAIN_CODES:
                     raise TeachingError("Gemini is still busy or the free limit is reached. Try next again later.") from error
-                if code == 400 and files:
+                if code == 400 and has_files:
                     raise SlidesRefused("Gemini would not read the slides in that form.") from error
                 raise TeachingError(f"Gemini could not answer ({type(error).__name__}).") from error
-            if response.text:
-                return response.text
-            raise TeachingError("Gemini sent back an empty answer. Try again.")
         raise TeachingError("Gemini could not answer.")

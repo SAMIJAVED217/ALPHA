@@ -20,6 +20,7 @@ QUIT_TOOL = "close_aplha"
 VIEW_TOOL = "share_view"
 CLASS_TOOL = "start_professor_mode"
 INTERPRET_TOOL = "start_live_translation"
+READER_TOOL = "open_translated_reader"
 
 _FILE_PARAMETERS = {
     "file_name": ("STRING", "Name only, no folders, ending in .txt, .md, .csv, .json or .log."),
@@ -52,6 +53,14 @@ def _starting_translation(arguments):
     if code is None:
         raise ToolRefused("The live translation cannot speak that language.")
     return {"ok": True, "target": code, "detail": f"Starting live translation into {languages.INTERPRETER_LANGUAGES[code]}."}
+
+
+def _opening_reader(arguments):
+    code = languages.interpreter_code(text(arguments, "language", 40))
+    source = str(arguments.get("source", "pdf")).strip().lower()
+    if code is None or source not in ("pdf", "screen"):
+        raise ToolRefused("Choose a language it can speak, and pdf or screen.")
+    return {"ok": True, "target": code, "source": source, "detail": "Opening the translated reader."}
 
 
 def _run_by_the_conversation(_arguments):
@@ -89,6 +98,13 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
                 {"language": ("STRING", "The language to speak the translation in, such as English or Urdu.")},
                 ("language",),
                 run=_starting_translation,
+            ),
+            Tool(
+                READER_TOOL,
+                "Read a PDF or what is on the screen aloud, translated word by word, when the owner asks.",
+                {"language": ("STRING", "The language to read in."), "source": ("STRING", "pdf or screen.")},
+                ("language", "source"),
+                run=_opening_reader,
             ),
             Tool(CLASS_TOOL, "Open Professor Mode, when the owner says professor mode, start class or teach me.",
                  run=_opening_class),

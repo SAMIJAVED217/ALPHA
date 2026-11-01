@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-781-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-805-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -77,6 +77,15 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - The original and the translation appear side by side, so you can check them
 - It stays silent for its own language, so it does not translate itself from the speakers
 - Hands-free returns when it stops. Your sound goes to Google while it runs
+</details>
+
+<details>
+<summary><b>Translated reader</b>: PDFs and screens read aloud in your language</summary>
+
+- Choose a PDF, or say "read my screen in Urdu"
+- Gemini translates the whole page as closely as the language allows, with no summary
+- The translation appears on screen while Gemini's speech model reads it aloud
+- It carries on page by page, and APLHA steps aside before capturing the screen
 </details>
 
 <details>
@@ -202,7 +211,7 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[68 tools]
+    Talk --> Tools[69 tools]
     Talk <--> Second[Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
@@ -222,7 +231,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 68 declared tools, of which only shutdown and restart ask |
+| **Tools** | 69 declared tools, of which only shutdown and restart ask |
 
 ```text
 alpha/
@@ -233,7 +242,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         781 automated tests
+tests/         805 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

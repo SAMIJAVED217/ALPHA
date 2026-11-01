@@ -214,7 +214,7 @@ def test_only_harmless_tools_run_without_confirmation(box):
         "open_app", "list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window",
         "remember", "recall", "notion_search", "notion_read", "gmail_search", "gmail_read",
         "undo_last_action", "open_website", "search_web", "read_window", "find_chat", "ask_grok",
-        "watch_page", "list_watches", "stop_watching", "close_aplha", "share_view", "call_person", "start_professor_mode", "start_live_translation", "cancel_power_off", "lock_computer",
+        "watch_page", "list_watches", "stop_watching", "close_aplha", "share_view", "call_person", "start_professor_mode", "start_live_translation", "open_translated_reader", "cancel_power_off", "lock_computer",
         "sleep_computer", "play_media", "media_control", "get_time", "set_reminder", "list_reminders",
         "cancel_reminder", "get_weather", "get_news", "read_clipboard", "write_clipboard", "list_folder",
         "find_files", "read_file", "update_about_me",

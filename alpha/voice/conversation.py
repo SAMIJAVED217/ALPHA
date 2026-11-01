@@ -85,7 +85,7 @@ def take_picture(source: str) -> bytes:
         creationflags=0x08000000,
     )
     if finished.returncode != 0 or not finished.stdout:
-        raise RuntimeError(f"no picture came from {SOURCE_NAMES[source]}")
+        raise RuntimeError(f"no picture came from {SOURCE_NAMES.get(source, 'your screen')}")
     return finished.stdout
 
 
@@ -128,6 +128,9 @@ class Conversation(QObject):
     class_requested = Signal()
     class_message = Signal(str)
     interpreter_requested = Signal(str)
+    reader_requested = Signal(str, str)
+    speech_finished = Signal()
+    reading_interrupted = Signal()
     interpreting_changed = Signal(str)
     interpreter_heard = Signal(str)
     interpreter_said = Signal(str)
@@ -185,6 +188,7 @@ class Conversation(QObject):
         self._interpreter_task: asyncio.Task | None = None
         self._interpreter_failures = 0
         self._was_hands_free = False
+        self._reading = False
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
             lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone)
@@ -310,6 +314,29 @@ class Conversation(QObject):
         self._unsaid = ""
         self._offline_reply_text(text)
         self._finish_offline_reply()
+
+    def set_reading(self, on: bool) -> None:
+        self._hop(self._change_reading, on)
+
+    def _change_reading(self, on: bool) -> None:
+        """Listening stops, so the reader's own voice cannot start a conversation."""
+        if on == self._reading:
+            return
+        self._reading = on
+        if on:
+            self._was_hands_free = self._mode is not Mode.OFF
+            self._change_hands_free(False)
+        elif self._was_hands_free:
+            self._change_hands_free(True)
+
+    def play_speech(self, pcm24k: bytes) -> None:
+        self._hop(self.speaker.play, pcm24k)
+
+    def finish_speech(self) -> None:
+        self._hop(self.speaker.reply_complete)
+
+    def stop_speech(self) -> None:
+        self._hop(self._hush)
 
     def start_interpreting(self, target: str) -> None:
         self._hop(self._begin_interpreting, target)
@@ -440,6 +467,9 @@ class Conversation(QObject):
         """Gemini cannot be told to stop talking, so the rest of this reply is thrown away as it arrives."""
         if self._interpreting_to:
             self._stop_interpreting()
+            return
+        if self._reading:
+            self.reading_interrupted.emit()
             return
         if not (self._playing or self._awaiting_reply):
             return
@@ -1173,6 +1203,7 @@ class Conversation(QObject):
     def _playback_finished(self) -> None:
         self._playing = False
         self._own_voice_gone_at = self._loop.time() + OWN_VOICE_SECONDS
+        self.speech_finished.emit()
         if self._mode is Mode.REPLYING and not self._awaiting_reply:
             self._open_follow_up()
         if self._state not in (State.LISTENING, State.ERROR) and not self._awaiting_reply:
@@ -1275,6 +1306,8 @@ class Conversation(QObject):
             self._loop.call_later(QUIT_DELAY_SECONDS, self.quit_requested.emit)
         if request.name == catalogue.CLASS_TOOL:
             self.class_requested.emit()
+        if request.name == catalogue.READER_TOOL and result.get("ok"):
+            self.reader_requested.emit(result["target"], result["source"])
         if request.name == catalogue.INTERPRET_TOOL and result.get("ok"):
             self.interpreter_requested.emit(result["target"])
 

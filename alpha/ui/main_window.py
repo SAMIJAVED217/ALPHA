@@ -48,6 +48,7 @@ from .hud_widgets import CharacterSwitch, HoloButton, RingGauge, Waveform
 from .memory_dialog import MemoryDialog
 from .presence_gl import make_presence
 from .professor_window import ProfessorWindow
+from .reader_window import ReaderWindow
 from .remote_dialog import RemoteDialog
 from .settings_dialog import SettingsDialog
 from .style import dark_title_bar, keep_menus_in_fullscreen, restore_window_style, window_style
@@ -314,6 +315,8 @@ class MainWindow(QMainWindow):
         conversation.class_requested.connect(self.open_class)
         conversation.class_message.connect(self._to_class)
         conversation.interpreter_requested.connect(self.open_interpreter)
+        conversation.reader_requested.connect(self.open_reader)
+        self._reader_window: ReaderWindow | None = None
         self._interpreter_window: InterpreterWindow | None = None
         self._class_window: ProfessorWindow | None = None
         self._remote =remote.RemoteServer(remote.RemoteControl(self._phone_said, conversation.interrupt))
@@ -686,6 +689,8 @@ class MainWindow(QMainWindow):
         self.class_action.triggered.connect(self.open_class)
         self.interpreter_action = QAction("Live translation", self)
         self.interpreter_action.triggered.connect(lambda: self.open_interpreter(""))
+        self.reader_action = QAction("Translated reader", self)
+        self.reader_action.triggered.connect(lambda: self.open_reader("", ""))
         self.remote_action = QAction("Phone and tablet control", self, checkable=True)
         self.remote_action.toggled.connect(self.set_remote)
         self.remote_code_action = QAction("New phone code", self, enabled=False)
@@ -695,7 +700,7 @@ class MainWindow(QMainWindow):
         self.restore_image_action = QAction("Bring back my removed picture", self)
         self.restore_image_action.triggered.connect(self.restore_character_image)
         menu.aboutToShow.connect(self._update_image_actions)
-        for action in (self.about_action, self.connections_action, self.class_action, self.interpreter_action, self.remote_action, self.remote_code_action,
+        for action in (self.about_action, self.connections_action, self.class_action, self.interpreter_action, self.reader_action, self.remote_action, self.remote_code_action,
                        self.compact_action, self.fullscreen_action, self.top_action,
                        self.briefing_action, self.skip_ads_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
             menu.addAction(action)
@@ -748,6 +753,11 @@ class MainWindow(QMainWindow):
         if self._interpreter_window is None:
             self._interpreter_window = InterpreterWindow(self._conversation, self.settings, self)
         self._interpreter_window.open_with(target)
+
+    def open_reader(self, target: str, source: str) -> None:
+        if self._reader_window is None:
+            self._reader_window = ReaderWindow(self._conversation, self.settings, self)
+        self._reader_window.open_with(target, source)
 
     def _to_class(self, text: str) -> None:
         if self._class_window is not None:
@@ -926,6 +936,8 @@ class MainWindow(QMainWindow):
             self._class_window.end_class()
         if self._interpreter_window is not None:
             self._interpreter_window.close()
+        if self._reader_window is not None:
+            self._reader_window.close()
         if self._tray is not None:
             self._tray.hide()
         super().closeEvent(event)
