@@ -40,7 +40,7 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Hands-free: just speak, or say "hey" or "hi"
 - Hold-to-talk on a key, or type
 - Press Esc to stop a reply at once
-- Choose from four AI voices through characters you add yourself
+- Each character can have its own voice
 </details>
 
 <details>
@@ -89,7 +89,7 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 <details>
 <summary><b>Web watching</b>: alerts for what you care about</summary>
 
-Say "watch this page for exam and scholarship". APLHA checks every 15 minutes and alerts you to new lines that match. Pages that need a sign-in are read from your open browser tab, so no password is stored. The page's text goes only to you, never to the AI, so a page cannot give it instructions.
+Say "watch this page for exam and scholarship". While it is open, APLHA checks every 15 minutes and alerts you to new lines that match. Pages that need a sign-in are read from your open browser tab, so no password is stored. The page's text goes only to you, never to the AI, so a page cannot give it instructions.
 </details>
 
 <details>
@@ -241,7 +241,7 @@ Python could clean up interface objects from a background thread, which crashed 
 <details>
 <summary><b>Making fancy graphics cheap</b></summary>
 
-The first version idled above 30% of a processor core. **Fix:** rendering moved to the graphics chip, and expensive drawing runs only where it can be seen. Idle use with hands-free off was measured at about 10 to 20% of one core, on integrated graphics.
+The first version idled above 30% of a processor core. **Fix:** rendering moved to the graphics chip, and expensive drawing runs only where it can be seen. Idle use, maximised on integrated graphics, was measured at 13 to 17% of one core.
 </details>
 
 <details>
@@ -262,9 +262,9 @@ Claims here are tested, not assumed. [docs/VERIFICATION.md](docs/VERIFICATION.md
 
 | Status | Features |
 | --- | --- |
-| **Seen working for real** | Voice conversation, hands-free, Esc, fullscreen, opening apps, typing, volume, music, weather, news, clipboard, memory, photos, WhatsApp sending, language replies |
-| **Automated tests only** | Reminders, moving and organising files, Gmail, Notion, Grok, other messaging apps, page watching |
-| **Not yet tested for real** | Screen and camera questions, shutdown and restart |
+| **Seen working for real** | Voice conversation, hands-free, Esc, opening apps, typing, volume, music, weather, news, clipboard, saving a memory, photos, WhatsApp sending, a sample of language replies |
+| **Automated tests only** | Reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Notion, Grok, page watching, lock, sleep, shutdown, restart |
+| **Not yet confirmed for real** | Answers about the screen, the camera, recalling a memory, KakaoTalk and other messaging apps |
 
 Tests use a temporary folder, a throwaway key store and pretend sound devices:
 
@@ -290,7 +290,7 @@ Your messages, your voice during a turn, pictures you share, your About me at th
 <details>
 <summary><b>Does it support every language?</b></summary>
 
-100 can be chosen, and 18 have had a real reply so far. Offline voices depend on what Windows has installed.
+100 can be chosen, but only a sample has had a real reply so far. Offline voices depend on what Windows has installed.
 </details>
 
 <details>
@@ -303,7 +303,6 @@ Yes. Add it to `assets/characters/extra_characters.json`, with a picture of the 
 
 - [ ] Other AI providers and local models
 - [ ] Plugins
-- [ ] Keeping a conversation after a dropped connection
 - [ ] A Windows installer
 - [x] Reminders, file handling and PDF reading
 - [x] 100 languages
