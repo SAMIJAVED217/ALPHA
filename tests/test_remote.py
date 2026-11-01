@@ -1,8 +1,12 @@
+import cv2
 import httpx
+import numpy as np
 import pytest
+from PySide6.QtGui import QImage
 
 from alpha import remote
 from alpha.remote import CODE_SECONDS, MOST_WRONG_CODES, SEEN_SECONDS, RemoteControl, RemoteServer, allowed_peer
+from alpha.ui.remote_dialog import RemoteDialog
 
 
 class Clock:
@@ -160,6 +164,20 @@ def test_connected_fades_when_the_device_stops_asking(rig):
     assert control.connected()
     clock.now += SEEN_SECONDS + 1
     assert not control.connected()
+
+
+def test_the_qr_picture_on_screen_scans_to_a_link_that_joins(qapp):
+    links, code = ["http://192.168.1.20:8765"], "123456"
+    dialog = RemoteDialog(links, code)
+    image = dialog.picture.pixmap().toImage().convertToFormat(QImage.Format.Format_Grayscale8)
+    pixels = np.frombuffer(image.constBits(), np.uint8).reshape(image.height(), image.bytesPerLine())[:, : image.width()]
+    assert cv2.QRCodeDetector().detectAndDecode(pixels.copy())[0] == "http://192.168.1.20:8765/#123456"
+
+
+def test_the_page_joins_from_the_code_in_a_link_and_removes_it(rig):
+    browser, *_ = rig
+    page = browser.get("/").text
+    assert "location.hash" in page and "history.replaceState" in page
 
 
 def test_nothing_is_kept_for_the_phone_until_a_device_has_joined(rig):

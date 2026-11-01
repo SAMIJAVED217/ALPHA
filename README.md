@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-605-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-629-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -56,8 +56,9 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 <details>
 <summary><b>Phone and tablet control</b>: message APLHA from another device</summary>
 
-- Turn it on from the More menu, then open the address shown on your phone or tablet
-- A device joins with a six-digit code that works once and lasts five minutes
+- Turn it on from the More menu, then scan the QR code with your phone or tablet
+- Or open the address shown and enter the six-digit code
+- The code works once and lasts five minutes
 - Send messages, follow replies and stop a reply from the page
 - The main screen shows a pill whenever it is on
 - It cannot press CONFIRM, so sensitive actions still wait at the PC
@@ -204,7 +205,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         605 automated tests
+tests/         629 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

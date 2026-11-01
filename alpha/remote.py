@@ -117,7 +117,14 @@ $("talk").onsubmit = async event => {
   if (!answer.ok) add("notice", "That message did not reach APLHA.");
 };
 $("stop").onclick = () => post("/stop");
-poll();
+async function joinFromLink() {
+  const code = location.hash.slice(1);
+  history.replaceState(null, "", "/");
+  if (!/^[0-9]{6}$/.test(code)) return;
+  const answer = await post("/pair", {code});
+  if (!answer.ok) $("state").textContent = (await answer.json()).error;
+}
+joinFromLink().then(poll);
 setInterval(() => { if (joined) poll(); }, 1500);
 </script></body></html>
 """

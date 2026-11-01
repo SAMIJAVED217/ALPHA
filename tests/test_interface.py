@@ -5,9 +5,9 @@ import pytest
 from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMainWindow
 
-from alpha import icon, keystore, paths, settings as settings_store, shortcut
+from alpha import icon, keystore, paths, remote, settings as settings_store, shortcut
 from alpha.actions import ActionGate, EXPIRY_SECONDS, Outcome
 from alpha.audio.hub import AudioHub
 from alpha.audio.microphone import MicState
@@ -167,16 +167,17 @@ def test_frame_rate_drops_at_rest(qapp):
 
 
 def test_phone_control_is_off_at_start_and_always_shows_when_on(rig, monkeypatch):
-    shown = []
-    monkeypatch.setattr(QMessageBox, "information", lambda _parent, _title, text: shown.append(text))
     monkeypatch.setattr(rig.window._remote, "_port", 0)
     monkeypatch.setattr(rig.window._remote, "_host", "127.0.0.1")
+    monkeypatch.setattr(remote, "addresses", lambda: ["192.168.1.20"])
     assert not rig.window._remote.running and rig.window.remote_indicator.isHidden()
     rig.window.remote_action.setChecked(True)
     assert not rig.window.remote_indicator.isHidden()
     assert "PHONE CONTROL ON" in rig.window.remote_indicator.text()
     assert "phone control" in rig.window._live_inputs()
-    assert rig.window._remote.control._code in shown[0]
+    assert rig.window._remote.control._code in rig.window._remote_dialog.details.text()
+    assert not rig.window._remote_dialog.picture.pixmap().isNull()
+    rig.window._remote_dialog.close()
     rig.window.remote_action.setChecked(False)
     assert not rig.window._remote.running and rig.window.remote_indicator.isHidden()
 

@@ -46,6 +46,7 @@ from .hud_panel import UNKNOWN, HudPanel
 from .hud_widgets import CharacterSwitch, HoloButton, RingGauge, Waveform
 from .memory_dialog import MemoryDialog
 from .presence_gl import make_presence
+from .remote_dialog import RemoteDialog
 from .settings_dialog import SettingsDialog
 from .style import dark_title_bar, keep_menus_in_fullscreen, restore_window_style, window_style
 
@@ -711,14 +712,9 @@ class MainWindow(QMainWindow):
             self.show_remote_code()
 
     def show_remote_code(self) -> None:
-        code = self._remote.control.new_code()
-        links = "\n".join(f"http://{place}:{self._remote.port}" for place in remote.addresses())
-        QMessageBox.information(
-            self, "APLHA",
-            f"On your phone or tablet, on the same Wi-Fi, open:\n\n{links}\n\nThen enter this code within "
-            f"5 minutes:\n\n{code}\n\nThis link is not encrypted, so use it on your own network. "
-            "Actions that need CONFIRM still wait here on the PC.",
-        )
+        links = [f"http://{place}:{self._remote.port}" for place in remote.addresses()]
+        self._remote_dialog = RemoteDialog(links, self._remote.control.new_code(), self)
+        self._remote_dialog.show()
 
     def _phone_said(self, text: str) -> None:
         self._conversation.heard.emit(f"(from phone) {text}")
