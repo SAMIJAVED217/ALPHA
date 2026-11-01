@@ -1,0 +1,44 @@
+# Git has no inline comments, so every comment stays on its own line.
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*token*.json
+*credential*.json
+*client_secret*.json
+*api_key*
+
+# Personal data and settings
+settings.json
+*.db
+*.sqlite
+
+# The owner's private characters. Only APLHA is published.
+assets/characters/*
+!assets/characters/aplha.png
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# Downloaded models and voices
+models/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime output
+*.log
+logs/
