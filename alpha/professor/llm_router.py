@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 MOST_TRIES = 3
 FIRST_WAIT_SECONDS = 4.0
-TIMEOUT_MS = 180_000
+TIMEOUT_MS = 400_000
 _TRY_AGAIN_CODES = (429, 500, 502, 503, 504)
 
 

@@ -26,6 +26,19 @@ GOALS = {"exam": "exam prep", "review": "quick review", "learn": "learn new mate
 _ENTER = re.compile(r"^(please\s+)?(professor mode|start (the )?class|teach me)\b", re.IGNORECASE)
 _EXIT = re.compile(r"^(please\s+)?(exit professor mode|end (the )?class)\b", re.IGNORECASE)
 _FOR_APLHA = re.compile(r"^\W*(hey\s+)?(alpha|aplha)\b(?!\s+(particles?|decay|rays?|radiation)\b)", re.IGNORECASE)
+_NEXT_WORDS = ("next", "next slides", "continue")
+_QUIZ_WORDS = ("quiz me", "quiz")
+_STOP_QUIZ_WORDS = ("stop quiz", "end quiz", "stop the quiz", "end the quiz")
+_CONTROL_WORDS = ("simpler", "deeper", "example", "why", "summary")
+_RESULT = re.compile(r"^[ \t*_`]*RESULT:[ \t]*(correct|wrong)[ \t*_`.]*$", re.IGNORECASE | re.MULTILINE)
+# How to mark a grade, so the app can keep the score. What to teach stays in the prompt files.
+_NO_SCORE = "Do not state a score or count questions, because the app keeps the score."
+_GRADE_FORMAT = (
+    f"After grading, ask the next question. {_NO_SCORE} "
+    "As the very last line, write only RESULT: correct or RESULT: wrong for this answer. "
+    "A partly right answer is wrong."
+)
+_END_OF_LECTURE = "That was the last slide. Now give the end-of-lecture material from your slide-by-slide protocol."
 _COMMON_WORDS = {"intro", "introduction", "to", "the", "in", "of", "for", "and", "semiconductor", "industry", "course", "class"}
 
 
@@ -46,8 +59,8 @@ def is_for_aplha(text: str) -> bool:
     return _FOR_APLHA.search(text) is not None
 
 
-def is_next(text: str) -> bool:
-    return text.strip(" .!?,").lower() in ("next", "next slides", "continue")
+def _word(text: str) -> str:
+    return " ".join(text.lower().split()).strip(" .!?,")
 
 
 @dataclass(frozen=True)
@@ -126,6 +139,10 @@ class Lesson:
         self.lecture = lecture
         self.goal = goal
         self.pointer = 0
+        self.closed = False
+        self.quizzing = False
+        self.correct = 0
+        self.graded = 0
         self._system = system
         self._slides = slides
         self._model = model
@@ -144,9 +161,51 @@ class Lesson:
         self._history += [("user", asked), ("model", answer)]
         self._history = self._history[-2 * self._config.max_history_turns:]
 
+    @property
+    def needs_closing(self) -> bool:
+        return self.finished and not self.closed
+
+    def respond(self, text: str) -> renderer.Reply:
+        """Every button and spoken word comes here. Anything else in a quiz is an answer to grade."""
+        word = _word(text)
+        if word in _NEXT_WORDS:
+            self.quizzing = False
+            return self.teach_next()
+        if word in _QUIZ_WORDS:
+            self.quizzing = True
+            return self.ask(f"quiz me\n\n{_NO_SCORE}")
+        if self.quizzing and word in _STOP_QUIZ_WORDS:
+            self.quizzing = False
+            words = f"Quiz stopped at {self.correct} out of {self.graded}."
+            return renderer.Reply(words, words)
+        if self.quizzing and word not in _CONTROL_WORDS:
+            return self._grade(text)
+        return self.ask(text)
+
+    def _grade(self, answer: str) -> renderer.Reply:
+        asked = f"My answer: {answer}\n\n{_GRADE_FORMAT}"
+        reply = self._model.ask(self._system, self._history, asked)
+        grades = _RESULT.findall(reply)
+        if grades:
+            self.graded += 1
+            self.correct += grades[-1].lower() == "correct"
+        else:
+            log.warning("A quiz reply came with no grade, so it was not scored")
+        reply = _RESULT.sub("", reply).strip()
+        self._remember(asked, reply)
+        return renderer.split(reply)
+
+    def _close_lecture(self) -> renderer.Reply:
+        answer = self._model.ask(self._system, self._history, _END_OF_LECTURE)
+        self._remember(_END_OF_LECTURE, answer)
+        self.closed = True
+        return renderer.split(answer)
+
     def teach_next(self) -> renderer.Reply:
-        if self.finished:
+        if self.closed:
             return renderer.Reply("That was the last slide of this lecture.", "That was the last slide of this lecture.")
+        if self.finished:
+            return self._close_lecture()
         first, last = self.pointer + 1, min(self.pointer + self._config.chunk_pages, self.total)
         chosen = self._slides[self.pointer:last]
         instruction = (

@@ -6,6 +6,7 @@ import logging
 import threading
 
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QImage, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..professor import professor_mode as professor
-from ..professor import slide_loader
+from ..professor import math_render, slide_loader
 from ..professor.llm_router import ProfessorModel, TeachingError
 from ..professor.professor_mode import Lesson, ProfessorSetupError
 from .style import dark_title_bar
@@ -29,6 +30,23 @@ log = logging.getLogger(__name__)
 
 CHOOSING_COURSE, GIVING_DETAILS, CHOOSING_SLIDES, TEACHING = "course", "details", "slides", "teaching"
 SLIDE_FILTER = "Slides (*.pdf *.png *.jpg *.jpeg)"
+CONTROLS = ("Next", "Simpler", "Deeper", "Example", "Why?", "Quiz me", "Summary")
+
+
+class Notes(QTextBrowser):
+    """Shows Markdown, with equations supplied as pictures from memory."""
+
+    def __init__(self):
+        super().__init__()
+        self.pictures: dict[str, bytes] = {}
+
+    def loadResource(self, kind, name):
+        data = self.pictures.get(name.toString())
+        if kind == QTextDocument.ResourceType.ImageResource and data:
+            picture = QImage.fromData(data)
+            picture.setDevicePixelRatio(math_render.SHARPNESS)
+            return picture
+        return super().loadResource(kind, name)
 
 
 class ProfessorWindow(QDialog):
@@ -60,7 +78,7 @@ class ProfessorWindow(QDialog):
         self.status.setWordWrap(True)
         self.course_area = QWidget()
         self._course_grid = QGridLayout(self.course_area)
-        self.notes = QTextBrowser()
+        self.notes = Notes()
         self.notes.setOpenExternalLinks(False)
         self.notes.setOpenLinks(False)
         self.input = QLineEdit()
@@ -69,18 +87,30 @@ class ProfessorWindow(QDialog):
         self.send_button.clicked.connect(self._send_typed)
         self.choose_button = QPushButton("Choose slides")
         self.choose_button.clicked.connect(self.choose_slides)
-        self.next_button = QPushButton("Next")
-        self.next_button.clicked.connect(lambda: self.handle("next"))
+        self.score = QLabel()
+        self.score.setObjectName("detail")
+        self.score.hide()
+        self.control_area = QWidget()
+        control_row = QHBoxLayout(self.control_area)
+        control_row.setContentsMargins(0, 0, 0, 0)
+        self.controls: dict[str, QPushButton] = {}
+        for word in CONTROLS:
+            button = QPushButton(word)
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda _checked=False, said=word: self.handle(said))
+            control_row.addWidget(button)
+            self.controls[word] = button
         self.end_button = QPushButton("End class")
         self.end_button.clicked.connect(self.end_class)
 
         controls = QHBoxLayout()
-        for widget in (self.choose_button, self.next_button, self.end_button):
+        for widget in (self.choose_button, self.control_area, self.end_button):
             controls.addWidget(widget)
-        for widget in (self.send_button, self.choose_button, self.next_button, self.end_button):
+        controls.addStretch(1)
+        controls.addWidget(self.score)
+        for widget in (self.send_button, self.choose_button, self.end_button):
             # Otherwise pressing Enter in the typing box would also press a button.
             widget.setAutoDefault(False)
-        controls.addStretch(1)
         typing = QHBoxLayout()
         typing.addWidget(self.input, 1)
         typing.addWidget(self.send_button)
@@ -123,6 +153,7 @@ class ProfessorWindow(QDialog):
         self._stage = CHOOSING_COURSE
         self._conversation.set_class(True)
         self._lesson, self._course, self._notes = None, None, ""
+        self.notes.pictures.clear()
         self.heading.setText("Professor Mode")
         self.notes.clear()
         while self._course_grid.count():
@@ -136,7 +167,8 @@ class ProfessorWindow(QDialog):
         self.course_area.show()
         self.notes.hide()
         self.choose_button.hide()
-        self.next_button.hide()
+        self.control_area.hide()
+        self.score.hide()
         self.input.setPlaceholderText("Or say or type the course")
         self._say("Which course shall we study?")
         self.show()
@@ -174,12 +206,8 @@ class ProfessorWindow(QDialog):
             self._lecture, self._goal = text, professor.find_goal(text)
             self.choose_slides()
         elif self._stage == TEACHING and not self._busy:
-            if professor.is_next(text):
-                self._run(self._lesson.teach_next)
-            else:
-                self._add_note(f"**You:** {text}")
-                question = text
-                self._run(lambda: self._lesson.ask(question))
+            self._add_note(math_render.Prepared(f"**You:** {text}"))
+            self._run(lambda: self._lesson.respond(text))
 
     def choose_course(self, course: professor.Course) -> None:
         try:
@@ -214,47 +242,62 @@ class ProfessorWindow(QDialog):
         self._lesson = Lesson(self._course, self._system, self._lecture, self._goal, slides, model, self._config)
         self._stage = TEACHING
         self.choose_button.hide()
-        self.next_button.show()
+        self.control_area.show()
         self.notes.show()
         self.input.setPlaceholderText("Ask anything, or say next")
         self._run(self._lesson.teach_next)
 
     def _run(self, work) -> None:
-        self._busy = True
-        self.next_button.setEnabled(False)
-        self.send_button.setEnabled(False)
-        self.status.setText("Teaching. This can take a minute.")
+        self._set_busy(True)
+        self.status.setText("Working. This can take a minute or two.")
+
+        def tell(answer, problem) -> None:
+            try:
+                self._answered.emit(answer, problem)
+            except RuntimeError:
+                log.info("A class answer arrived after its window had gone")
 
         def background():
             try:
-                self._answered.emit(work(), None)
+                reply = work()
+                tell((reply, math_render.prepare(reply.screen)), None)
             except (TeachingError, slide_loader.SlideError) as error:
-                self._answered.emit(None, str(error))
+                tell(None, str(error))
             except Exception as error:
                 log.exception("Professor Mode failed")
-                self._answered.emit(None, f"That failed ({type(error).__name__}).")
+                tell(None, f"That failed ({type(error).__name__}).")
 
         threading.Thread(target=background, name="alpha-professor", daemon=True).start()
 
-    def _show_answer(self, reply, problem) -> None:
-        self._busy = False
-        self.next_button.setEnabled(True)
-        self.send_button.setEnabled(True)
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        self.control_area.setEnabled(not busy)
+        self.send_button.setEnabled(not busy)
+
+    def _show_answer(self, answer, problem) -> None:
+        self._set_busy(False)
         if self._lesson is None:
             return
         if problem:
             self.status.setText(problem)
             return
-        self._add_note(reply.screen)
+        reply, prepared = answer
+        self._add_note(prepared)
         self._conversation.say_aloud(reply.spoken)
         self._show_progress()
+        if self._lesson.needs_closing:
+            self._run(self._lesson.teach_next)
+            self.status.setText("Writing the summary and exam questions. This can take several minutes.")
 
     def _show_progress(self) -> None:
         self.status.setText(f"Taught {self._lesson.pointer} of {self._lesson.total} slides.")
+        self.score.setText(f"Quiz score: {self._lesson.correct} / {self._lesson.graded}")
+        self.score.setVisible(self._lesson.quizzing or self._lesson.graded > 0)
 
-    def _add_note(self, markdown: str) -> None:
+    def _add_note(self, prepared: math_render.Prepared) -> None:
         """The view stays at the start of the new part, not at its end."""
         start_of_new = int(self.notes.document().size().height()) if self._notes else 0
-        self._notes = f"{self._notes}\n\n---\n\n{markdown}" if self._notes else markdown
+        self.notes.pictures.update(prepared.pictures)
+        self._notes = f"{self._notes}\n\n---\n\n{prepared.markdown}" if self._notes else prepared.markdown
         self.notes.setMarkdown(self._notes)
         self.notes.verticalScrollBar().setValue(start_of_new)

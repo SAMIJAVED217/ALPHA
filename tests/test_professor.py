@@ -10,7 +10,7 @@ from pypdf import PdfWriter
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 from PySide6.QtWidgets import QFileDialog
 
-from alpha.professor import llm_router, renderer, slide_loader
+from alpha.professor import llm_router, math_render, renderer, slide_loader
 from alpha.professor import professor_mode as professor
 from alpha.professor.llm_router import ProfessorModel, SlidesRefused, TeachingError
 from alpha.professor.professor_mode import Course, Lesson, ProfessorConfig, ProfessorSetupError
@@ -283,6 +283,218 @@ def test_no_exam_details_live_in_the_code():
         assert "MCQ" not in code and "TOPIK" not in code and "D:\\" not in code
 
 
+# Acceptance test 5: a quiz asks, waits, grades and scores.
+
+
+class Marker(Gemini):
+    """Grades every answer with the next result in the list."""
+
+    def __init__(self, grades):
+        super().__init__()
+        self.grades = list(grades)
+
+    def generate_content(self, model, contents, config):
+        self.calls.append((model, contents, config))
+        said = contents[-1]["parts"][-1]["text"]
+        grade = f"\nRESULT: {self.grades.pop(0)}" if said.startswith("My answer") else ""
+        return type("Reply", (), {"text": f"Next question.\nWhich gas is used?\n`next | simpler`{grade}"})()
+
+
+def test_a_quiz_counts_right_and_wrong_answers(tmp_path):
+    gemini = Marker(["correct", "wrong", "correct"])
+    lesson = lesson_of(tmp_path, gemini)
+    lesson.respond("quiz me")
+    assert lesson.quizzing and lesson.graded == 0
+    for answer in ("b", "c", "argon"):
+        lesson.respond(answer)
+    assert (lesson.correct, lesson.graded) == (2, 3)
+
+
+def test_the_grade_line_never_reaches_the_screen_or_voice(tmp_path):
+    lesson = lesson_of(tmp_path, Marker(["correct"]))
+    lesson.respond("quiz me")
+    reply = lesson.respond("b")
+    assert "RESULT" not in reply.screen and "RESULT" not in reply.spoken
+
+
+def test_the_grade_line_is_not_kept_in_the_conversation(tmp_path):
+    gemini = Marker(["correct", "correct"])
+    lesson = lesson_of(tmp_path, gemini)
+    lesson.respond("quiz me")
+    lesson.respond("b")
+    lesson.respond("c")
+    assert "RESULT:" not in gemini.calls[-1][1][-2]["parts"][0]["text"]
+
+
+def test_a_reply_with_no_grade_is_not_counted(tmp_path):
+    lesson = lesson_of(tmp_path, Gemini())
+    lesson.respond("quiz me")
+    lesson.respond("b")
+    assert lesson.graded == 0
+
+
+@pytest.mark.parametrize("line", ["RESULT: correct", "**RESULT: correct**", "result: Correct.", "`RESULT: correct`"])
+def test_grades_are_read_in_any_style(tmp_path, line):
+    class Styled(Gemini):
+        def generate_content(self, model, contents, config):
+            return type("Reply", (), {"text": f"Good.\nMore.\n{line}"})()
+
+    lesson = lesson_of(tmp_path, Styled())
+    lesson.respond("quiz me")
+    lesson.respond("b")
+    assert (lesson.correct, lesson.graded) == (1, 1)
+
+
+def test_a_control_during_a_quiz_is_not_treated_as_an_answer(tmp_path):
+    lesson = lesson_of(tmp_path, Marker([]))
+    lesson.respond("quiz me")
+    lesson.respond("Why?")
+    assert lesson.graded == 0 and lesson.quizzing
+
+
+def test_next_leaves_the_quiz_and_teaches(tmp_path):
+    lesson = lesson_of(tmp_path, Gemini())
+    lesson.respond("quiz me")
+    lesson.respond("next")
+    assert not lesson.quizzing and lesson.pointer == 6
+
+
+def test_stopping_a_quiz_reports_the_score_without_a_call(tmp_path):
+    gemini = Marker(["correct"])
+    lesson = lesson_of(tmp_path, gemini)
+    lesson.respond("quiz me")
+    lesson.respond("b")
+    before = len(gemini.calls)
+    assert "1 out of 1" in lesson.respond("stop quiz").spoken
+    assert len(gemini.calls) == before and not lesson.quizzing
+
+
+@pytest.mark.parametrize("word", ["simpler", "Deeper", "example", "Why?", "summary"])
+def test_control_words_reach_gemini_and_keep_the_place(tmp_path, word):
+    gemini = Gemini()
+    lesson = lesson_of(tmp_path, gemini)
+    lesson.teach_next()
+    lesson.respond(word)
+    assert lesson.pointer == 6
+    assert gemini.calls[-1][1][-1]["parts"] == [{"text": word}]
+
+
+# The end of a lecture.
+
+
+def test_after_the_last_slide_the_lecture_closes_once(tmp_path):
+    gemini = Gemini()
+    lesson = lesson_of(tmp_path, gemini, pages=6)
+    lesson.teach_next()
+    assert lesson.needs_closing
+    lesson.teach_next()
+    assert "end-of-lecture" in gemini.calls[-1][1][-1]["parts"][-1]["text"]
+    assert not lesson.needs_closing
+    calls = len(gemini.calls)
+    assert "last slide" in lesson.teach_next().spoken
+    assert len(gemini.calls) == calls
+
+
+def test_a_failed_closing_can_be_tried_again(tmp_path):
+    gemini = Gemini()
+    lesson = lesson_of(tmp_path, gemini, pages=6)
+    lesson.teach_next()
+    gemini.failures = [Failure(403)]
+    with pytest.raises(TeachingError):
+        lesson.teach_next()
+    assert lesson.needs_closing
+    lesson.teach_next()
+    assert lesson.closed
+
+
+def test_the_window_closes_the_lecture_by_itself(room):
+    window, conversation, gemini = room
+    teaching(window)
+    window.handle("next")
+    assert spin_until(lambda: window._lesson.closed and not window._busy)
+    assert "end-of-lecture" in gemini.calls[-1][1][-1]["parts"][-1]["text"]
+    assert len(gemini.calls) == 3
+
+
+# Equations.
+
+
+def test_equations_become_pictures():
+    prepared = math_render.prepare(r"Using $\frac{dN}{dt}$ and" + "\n" + r"$$E = mc^2$$")
+    assert "$" not in prepared.markdown
+    assert len(prepared.pictures) == 2
+    assert all(data.startswith(b"\x89PNG") for data in prepared.pictures.values())
+    assert all(f"({name})" in prepared.markdown for name in prepared.pictures)
+
+
+@pytest.mark.parametrize(
+    "latex, words",
+    [(r"800\text{–}900\ ^\circ\text{C}", "800–900 °C"), (r"1{,}000\ ^\circ\text{C}", "1,000 °C"),
+     (r"\ge 450\ ^\circ\text{C}", "≥ 450 °C"), (r"4\text{ to }5\text{ hours}", "4 to 5 hours")],
+)
+def test_simple_values_become_normal_text(latex, words):
+    prepared = math_render.prepare(f"At ${latex}$ here")
+    assert prepared.pictures == {} and prepared.markdown == f"At {words} here"
+
+
+def test_one_equation_drawn_twice_makes_one_picture():
+    prepared = math_render.prepare("$x^2$ and again $x^2$")
+    assert len(prepared.pictures) == 1
+
+
+def test_code_blocks_are_left_alone():
+    source = "```\nprice = $5 and $6\n```\nand `$x$`"
+    assert math_render.prepare(source).markdown == source
+
+
+@pytest.mark.parametrize("text", ["It costs $5 and $6 today", "Pay $20.", "A$ and B$"])
+def test_money_is_not_mistaken_for_an_equation(text):
+    assert math_render.prepare(text).pictures == {}
+
+
+@pytest.mark.parametrize(
+    "latex, words",
+    [(r"\begin{bmatrix}1 & 2\\3 & 4\end{bmatrix}", "1 2; 3 4"), (r"\text{식각}", "식각")],
+)
+def test_what_cannot_be_drawn_becomes_plain_text(latex, words):
+    prepared = math_render.prepare(f"See ${latex}$ here")
+    assert prepared.pictures == {} and words in prepared.markdown and "\\" not in prepared.markdown
+
+
+def test_plain_text_is_readable():
+    assert math_render.plain(r"800\ ^\circ\text{C}") == "800 °C"
+
+
+def test_the_window_shows_equation_pictures(room):
+    window, _, gemini = room
+    teaching(window)
+    assert window.notes.pictures
+    name = next(iter(window.notes.pictures))
+    assert "$E" not in window.notes.toPlainText()
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QTextDocument
+
+    assert not window.notes.loadResource(QTextDocument.ResourceType.ImageResource, QUrl(name)).isNull()
+
+
+def test_every_control_button_sends_its_word(room):
+    window, _, gemini = room
+    teaching(window)
+    for word in ("Simpler", "Deeper", "Example", "Why?", "Summary"):
+        window.controls[word].click()
+        assert spin_until(lambda: not window._busy)
+        assert gemini.calls[-1][1][-1]["parts"] == [{"text": word}]
+
+
+def test_the_score_shows_during_a_quiz(room, monkeypatch):
+    window, _, gemini = room
+    teaching(window)
+    assert window.score.isHidden()
+    window.controls["Quiz me"].click()
+    assert spin_until(lambda: not window._busy)
+    assert not window.score.isHidden() and window.score.text() == "Quiz score: 0 / 0"
+
+
 # Words.
 
 
@@ -407,14 +619,14 @@ def test_next_teaches_the_following_slides_and_shows_progress(room):
     window, _, _ = room
     teaching(window)
     window.handle("next")
-    assert spin_until(lambda: not window._busy and window._lesson.pointer == 8)
-    assert "8 of 8" in window.status.text()
+    assert spin_until(lambda: window._lesson.pointer == 8)
+    assert spin_until(lambda: "8 of 8" in window.status.text() or "summary" in window.status.text())
 
 
 def test_the_next_button_does_the_same(room):
     window, _, _ = room
     teaching(window)
-    window.next_button.click()
+    window.controls["Next"].click()
     assert spin_until(lambda: window._lesson.pointer == 8)
 
 
@@ -432,7 +644,7 @@ def test_a_failure_is_shown_and_the_class_carries_on(room):
     gemini.failures = [Failure(403)]
     window.handle("next")
     assert spin_until(lambda: "could not answer" in window.status.text())
-    assert window._lesson.pointer == 6 and window.next_button.isEnabled()
+    assert window._lesson.pointer == 6 and window.controls["Next"].isEnabled()
 
 
 def test_no_slides_chosen_keeps_the_class_waiting(room, monkeypatch):
@@ -463,8 +675,8 @@ def test_a_message_while_gemini_is_working_does_not_start_a_second_call(room):
         return original(*arguments)
 
     window._lesson._model.ask = slow
-    window.handle("next")
-    window.handle("next")
+    window.handle("simpler")
+    window.handle("simpler")
     assert spin_until(lambda: held)
     release.set()
     assert spin_until(lambda: not window._busy)
@@ -484,7 +696,7 @@ def test_the_first_lesson_opens_at_its_top(room):
     window.handle("cad")
     window.show()
     window.notes.show()
-    window._add_note("\n\n".join(f"line {number}" for number in range(300)))
+    window._add_note(math_render.Prepared("\n\n".join(f"line {number}" for number in range(300))))
     assert window.notes.verticalScrollBar().value() == 0
 
 

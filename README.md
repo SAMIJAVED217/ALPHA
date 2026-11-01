@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-719-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests--2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -62,6 +62,9 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Gemini reads the pages itself, so slides in other languages and picture-only slides work
 - Slides are taught a few at a time, in order, and "next" moves on
 - Only the first line is spoken. Notes appear in their own window
+- Buttons for next, simpler, deeper, example, why, quiz and summary, which also work by voice
+- Quizzes ask one question at a time and keep a score
+- Equations are drawn in the notes, and each lecture ends with a summary, abbreviations and exam questions
 - Course rules live in private prompt files, which are not published
 </details>
 
@@ -219,7 +222,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         719 automated tests
+tests/          automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>
