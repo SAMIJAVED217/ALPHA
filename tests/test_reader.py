@@ -165,6 +165,21 @@ def test_esc_from_the_main_window_stops_it(desk):
     assert conversation.reading == [True, False]
 
 
+def test_the_close_button_closes_the_window(desk):
+    window, _, _ = desk
+    window.show()
+    window.close()
+    assert not window.isVisible()
+
+
+def test_esc_stops_reading_but_leaves_the_window_open(desk):
+    window, conversation, _ = desk
+    window.show()
+    window.choose_pdf()
+    window.reject()
+    assert window.isVisible() and conversation.reading == [True, False]
+
+
 def test_page_buttons(desk):
     window, conversation, reader = desk
     window.keep_going.setChecked(False)

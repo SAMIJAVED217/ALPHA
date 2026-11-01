@@ -64,6 +64,7 @@ FOLLOW_UP_SPEECH_CHUNKS = 3
 DIRECT_SPEECH_CHUNKS = 6
 LEAD_IN_CHUNKS = 6
 OWN_VOICE_SECONDS = 1.5
+AFTER_DECISION_SECONDS = 2.0
 MOST_INTERPRETER_TRIES = 3
 INTERPRETER_RETRY_SECONDS = 1.0
 PICTURE_COMING = {"ok": True, "detail": "The picture comes in the next message. Say nothing about it until then."}
@@ -948,6 +949,10 @@ class Conversation(QObject):
             log.info("Ignored a decision word with no clear speech behind it")
             return
         log.info("Heard a decision for the waiting action")
+        # The word is still in the recent sound. Without this, the next turn would send it to Gemini.
+        self._lead_in.clear()
+        self._follow_up_speech = 0
+        self._follow_up_settled_at = self._loop.time() + AFTER_DECISION_SECONDS
         if word == "cancel":
             self._cancel(proposal.id)
         elif word == "keyword" or not (proposal.owner_only and self._owner_keyword()):

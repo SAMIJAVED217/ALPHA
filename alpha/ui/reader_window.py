@@ -109,8 +109,10 @@ class ReaderWindow(QDialog):
         dark_title_bar(self)
 
     def closeEvent(self, event) -> None:
+        """Done here, because the dialog's own close goes through reject, which only stops the voice."""
         self.stop()
-        super().closeEvent(event)
+        self.hide()
+        event.accept()
 
     def reject(self) -> None:
         self.stop()

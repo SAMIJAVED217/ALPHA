@@ -6,6 +6,7 @@ from alpha import keystore, lessons, profile
 from alpha.tools.catalogue import build_toolbox
 from alpha.tools.registry import ToolRefused
 from alpha.actions import HumanPress
+from alpha.voice import conversation as conversation_module
 from alpha.voice.hands_free import Mode
 
 from .test_computer_tools import computer, rig  # noqa: F401
@@ -92,6 +93,30 @@ def test_the_keyword_approves_the_change(ears):  # noqa: F811
     r.sound(times=4)
     r.wake.on_decision("keyword")
     assert wait_until(lambda: r.conversation.gate.current is None)
+
+
+def test_the_spoken_keyword_never_reaches_gemini(ears):  # noqa: F811
+    keystore.save_secret(keystore.KEYWORD_ACCOUNT, "blue falcon")
+    r = ears()
+    owner_only_action(r)
+    r.sound(times=6)
+    r.wake.on_decision("keyword")
+    assert wait_until(lambda: r.conversation.gate.current is None)
+    r.sound(times=12)
+    r.hub.submit(lambda b: None).result(2)
+    assert r.conversation._mode is not Mode.TURN
+    assert r.speech_sent() == []
+
+
+def test_speech_after_the_pause_starts_a_turn_with_none_of_the_keyword_in_it(ears, monkeypatch):  # noqa: F811
+    keystore.save_secret(keystore.KEYWORD_ACCOUNT, "blue falcon")
+    monkeypatch.setattr(conversation_module, "AFTER_DECISION_SECONDS", 0.0)
+    r = ears()
+    owner_only_action(r)
+    r.sound(times=6)
+    r.wake.on_decision("keyword")
+    assert wait_until(lambda: r.conversation.gate.current is None)
+    assert len(r.conversation._lead_in) == 0
 
 
 def test_saying_confirm_is_not_enough_once_a_keyword_is_set(ears):  # noqa: F811
