@@ -17,7 +17,12 @@ from alpha.professor.professor_mode import Course, Lesson, ProfessorConfig, Prof
 from alpha.professor.slide_loader import Slide, SlideError
 from alpha.ui.professor_window import ProfessorWindow
 
-from .test_interface import spin_until
+from .test_interface import spin_until as wait_briefly
+
+
+def spin_until(condition):
+    """The first equation loads matplotlib, which takes seconds on a busy computer."""
+    return wait_briefly(condition, seconds=25)
 
 
 class Gemini:

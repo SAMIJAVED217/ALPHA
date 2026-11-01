@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests--2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-781-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -66,6 +66,17 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Quizzes ask one question at a time and keep a score
 - Equations are drawn in the notes, and each lecture ends with a summary, abbreviations and exam questions
 - Course rules live in private prompt files, which are not published
+</details>
+
+<details>
+<summary><b>Live translation</b>: an interpreter that speaks as people talk</summary>
+
+- Say "translate Korean into Urdu", or choose it from the More menu
+- It finds the spoken language itself and speaks only the translation, about 3 seconds behind
+- More than 70 languages to speak in, through Gemini's translation model
+- The original and the translation appear side by side, so you can check them
+- It stays silent for its own language, so it does not translate itself from the speakers
+- Hands-free returns when it stops. Your sound goes to Google while it runs
 </details>
 
 <details>
@@ -191,7 +202,7 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[67 tools]
+    Talk --> Tools[68 tools]
     Talk <--> Second[Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
@@ -211,7 +222,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 67 declared tools, of which only shutdown and restart ask |
+| **Tools** | 68 declared tools, of which only shutdown and restart ask |
 
 ```text
 alpha/
@@ -222,7 +233,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/          automated tests
+tests/         781 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

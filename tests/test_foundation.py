@@ -107,4 +107,4 @@ def test_no_gpl_only_binding_is_listed():
 def test_settings_file_holds_only_known_fields():
     settings.save(settings.load())
     saved = json.loads(paths.settings_file().read_text(encoding="utf-8"))
-    assert set(saved) == {"setup_complete", "model", "microphone", "speakers", "talk_key", "speech_engine", "speech_language", "character", "hands_free_at_start", "morning_briefing", "skip_ads", "last_briefing", "colours"}
+    assert set(saved) == {"setup_complete", "model", "microphone", "speakers", "talk_key", "speech_engine", "speech_language", "character", "hands_free_at_start", "morning_briefing", "skip_ads", "translate_to", "last_briefing", "colours"}

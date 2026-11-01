@@ -11,7 +11,7 @@ from .memory_tools import memory_tools
 from .notion import NotionClient, notion_tools
 from .registry import Tool, ToolBox, ToolRefused, UndoStack, text
 from .watch_tools import watch_tools
-from .. import profile
+from .. import languages, profile
 from ..reminders import ReminderBook
 from ..voice.persona import FILE_TOOL
 from ..watchdog import WatchBoard
@@ -19,6 +19,7 @@ from ..watchdog import WatchBoard
 QUIT_TOOL = "close_aplha"
 VIEW_TOOL = "share_view"
 CLASS_TOOL = "start_professor_mode"
+INTERPRET_TOOL = "start_live_translation"
 
 _FILE_PARAMETERS = {
     "file_name": ("STRING", "Name only, no folders, ending in .txt, .md, .csv, .json or .log."),
@@ -44,6 +45,13 @@ def _closing(_arguments):
 
 def _opening_class(_arguments):
     return {"ok": True, "detail": "Opening Professor Mode."}
+
+
+def _starting_translation(arguments):
+    code = languages.interpreter_code(text(arguments, "language", 40))
+    if code is None:
+        raise ToolRefused("The live translation cannot speak that language.")
+    return {"ok": True, "target": code, "detail": f"Starting live translation into {languages.INTERPRETER_LANGUAGES[code]}."}
 
 
 def _run_by_the_conversation(_arguments):
@@ -75,6 +83,13 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
             *everyday_tools(reminders, WebInfo(), computer),
             *file_tools(computer, undo),
             Tool(QUIT_TOOL, "Close APLHA itself, only when the owner asks.", run=_closing),
+            Tool(
+                INTERPRET_TOOL,
+                "Start live interpreting, when the owner wants speech around them translated aloud as it is spoken.",
+                {"language": ("STRING", "The language to speak the translation in, such as English or Urdu.")},
+                ("language",),
+                run=_starting_translation,
+            ),
             Tool(CLASS_TOOL, "Open Professor Mode, when the owner says professor mode, start class or teach me.",
                  run=_opening_class),
             Tool(

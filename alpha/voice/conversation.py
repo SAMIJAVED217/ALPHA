@@ -64,6 +64,8 @@ FOLLOW_UP_SPEECH_CHUNKS = 3
 DIRECT_SPEECH_CHUNKS = 6
 LEAD_IN_CHUNKS = 6
 OWN_VOICE_SECONDS = 1.5
+MOST_INTERPRETER_TRIES = 3
+INTERPRETER_RETRY_SECONDS = 1.0
 PICTURE_COMING = {"ok": True, "detail": "The picture comes in the next message. Say nothing about it until then."}
 PICTURE_MESSAGE = "This is the picture I just shared. Describe only what is in it."
 
@@ -125,6 +127,10 @@ class Conversation(QObject):
     link_changed = Signal(bool)
     class_requested = Signal()
     class_message = Signal(str)
+    interpreter_requested = Signal(str)
+    interpreting_changed = Signal(str)
+    interpreter_heard = Signal(str)
+    interpreter_said = Signal(str)
 
     def __init__(
         self,
@@ -141,6 +147,7 @@ class Conversation(QObject):
         capture: Callable[[str], bytes] | None = None,
         wake_model_ready: Callable[[], bool] = wake_model.is_ready,
         backup=None,
+        interpreter_connector=None,
     ):
         super().__init__()
         self._settings = settings
@@ -172,6 +179,12 @@ class Conversation(QObject):
         self._backup = backup
         self._unanswered = ""
         self._in_class = False
+        self._interpreter_connector = interpreter_connector or gemini.connect_interpreter
+        self._interpreting_to = ""
+        self._interpreter_sound: asyncio.Queue | None = None
+        self._interpreter_task: asyncio.Task | None = None
+        self._interpreter_failures = 0
+        self._was_hands_free = False
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
             lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone)
@@ -298,6 +311,103 @@ class Conversation(QObject):
         self._offline_reply_text(text)
         self._finish_offline_reply()
 
+    def start_interpreting(self, target: str) -> None:
+        self._hop(self._begin_interpreting, target)
+
+    def stop_interpreting(self) -> None:
+        self._hop(self._stop_interpreting)
+
+    @property
+    def interpreting(self) -> bool:
+        return bool(self._interpreting_to)
+
+    def _begin_interpreting(self, target: str) -> None:
+        if self._interpreting_to:
+            return
+        if not self._key_present:
+            self._fail("Add your Gemini key in Settings before translating.")
+            return
+        self._was_hands_free = self._mode is not Mode.OFF
+        self._change_hands_free(False)
+        self._hush()
+        self._stop_waiting_for_reply()
+        self._interpreting_to = target
+        self._interpreter_failures = 0
+        self._interpreter_sound = asyncio.Queue()
+        self._interpreter_task = self._loop.create_task(self._interpret(target))
+        self.mic.press()
+        self.interpreting_changed.emit(target)
+        self._go_to_rest()
+
+    def _stop_interpreting(self) -> None:
+        if not self._interpreting_to:
+            return
+        self._interpreting_to = ""
+        task, self._interpreter_task = self._interpreter_task, None
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+        self.mic.release()
+        self._hush()
+        self.speaker.reply_complete()
+        self.interpreting_changed.emit("")
+        if self._was_hands_free:
+            self._change_hands_free(True)
+        self._go_to_rest()
+
+    async def _interpret(self, target: str) -> None:
+        """A session is short, so a new one starts when it ends. Sound keeps waiting in the queue."""
+        while self._interpreting_to == target:
+            session = None
+            try:
+                session = await asyncio.wait_for(self._interpreter_connector(self._load_key(), target), CONNECT_TIMEOUT_SECONDS)
+                await self._run_interpreter(session)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                self._interpreter_failures += 1
+                problem = describe_failure(error, self._safe_key())
+                log.warning("The translation session ended: %s", problem)
+                if self._interpreter_failures >= MOST_INTERPRETER_TRIES:
+                    self._stop_interpreting()
+                    self._fail(problem)
+                    return
+                self.notice.emit("Reconnecting the translation.")
+                await asyncio.sleep(INTERPRETER_RETRY_SECONDS)
+            finally:
+                if session is not None:
+                    try:
+                        await session.close()
+                    except Exception:
+                        log.info("The translation session did not close cleanly")
+
+    async def _run_interpreter(self, session: LiveSession) -> None:
+        async def send() -> None:
+            while True:
+                await session.send_speech(await self._interpreter_sound.get())
+
+        async def receive() -> None:
+            async for event in session.events():
+                self._interpreter_failures = 0
+                if isinstance(event, ReplyAudio):
+                    self.speaker.play(event.pcm24k)
+                elif isinstance(event, ReplyText):
+                    self.interpreter_said.emit(event.text)
+                elif isinstance(event, HeardText):
+                    self.interpreter_heard.emit(event.text)
+                elif isinstance(event, ReplyDone):
+                    self.speaker.reply_complete()
+                elif isinstance(event, EndingSoon):
+                    return
+
+        tasks = [self._loop.create_task(send()), self._loop.create_task(receive())]
+        try:
+            finished, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in finished:
+                task.result()
+        finally:
+            for task in tasks:
+                task.cancel()
+
     def _went_to_class(self, text: str) -> bool:
         """Text from any source passes here, so typing and speaking behave the same."""
         if self._in_class and not is_for_aplha(text):
@@ -328,6 +438,9 @@ class Conversation(QObject):
 
     def _interrupt(self) -> None:
         """Gemini cannot be told to stop talking, so the rest of this reply is thrown away as it arrives."""
+        if self._interpreting_to:
+            self._stop_interpreting()
+            return
         if not (self._playing or self._awaiting_reply):
             return
         log.info("The owner interrupted the reply")
@@ -500,7 +613,9 @@ class Conversation(QObject):
             self.notice.emit(str(error))
 
     def _go_to_rest(self) -> None:
-        if self._gate.current is not None:
+        if self._interpreting_to:
+            self._set_state(State.LISTENING, "Translating")
+        elif self._gate.current is not None:
             self._set_state(State.WARNING, "Waiting for your decision")
         elif not self._key_present:
             self._set_state(State.WARNING, "Add your Gemini key in Settings")
@@ -632,6 +747,9 @@ class Conversation(QObject):
     # Text turns.
 
     def _begin_text(self, text: str) -> None:
+        if self._interpreting_to:
+            self.notice.emit("Stop the live translation first.")
+            return
         if not self._key_present:
             self._fail("Add your Gemini key in Settings before sending a message.")
             return
@@ -653,7 +771,7 @@ class Conversation(QObject):
     # Voice turns.
 
     def _begin_talk(self) -> None:
-        if self._talk_task is not None and not self._talk_task.done():
+        if self._interpreting_to or (self._talk_task is not None and not self._talk_task.done()):
             return
         if not self._key_present:
             self._fail("Add your Gemini key in Settings before talking.")
@@ -677,7 +795,9 @@ class Conversation(QObject):
             self.mic.release()
 
     def _queue_speech(self, chunk: bytes) -> None:
-        if self._mode is Mode.OFF:
+        if self._interpreting_to:
+            self._interpreter_sound.put_nowait(chunk)
+        elif self._mode is Mode.OFF:
             self._speech.put_nowait(chunk)
         else:
             self._hands_free_sound(chunk)
@@ -706,6 +826,9 @@ class Conversation(QObject):
             self.hands_free_changed.emit(mode)
 
     def _change_hands_free(self, wanted: bool) -> None:
+        if wanted and self._interpreting_to:
+            self.hands_free_changed.emit(Mode.OFF)
+            return
         if wanted == (self._mode is not Mode.OFF):
             return
         if wanted:
@@ -1152,6 +1275,8 @@ class Conversation(QObject):
             self._loop.call_later(QUIT_DELAY_SECONDS, self.quit_requested.emit)
         if request.name == catalogue.CLASS_TOOL:
             self.class_requested.emit()
+        if request.name == catalogue.INTERPRET_TOOL and result.get("ok"):
+            self.interpreter_requested.emit(result["target"])
 
     def _local_proposal(self, file_name: str, content: str) -> None:
         try:

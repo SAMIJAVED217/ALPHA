@@ -27,6 +27,7 @@ from .persona import SYSTEM_INSTRUCTION
 log = logging.getLogger(__name__)
 
 INPUT_MIME = "audio/pcm;rate=16000"
+INTERPRETER_MODEL = "gemini-3.5-live-translate-preview"
 
 
 def session_config(character_id: str = DEFAULT_CHARACTER, language: str = "en", about: str = "") -> dict:
@@ -41,6 +42,17 @@ def session_config(character_id: str = DEFAULT_CHARACTER, language: str = "en", 
         "realtime_input_config": {"automatic_activity_detection": {"disabled": True}},
         "tools": declarations(),
         "context_window_compression": {"sliding_window": {}},
+    }
+
+
+def interpreter_config(target: str) -> dict:
+    """Listens all the time and speaks only the translation. It takes no instructions or tools,
+    and stays silent for its own language, so its voice from the speakers is not translated back."""
+    return {
+        "response_modalities": ["AUDIO"],
+        "input_audio_transcription": {},
+        "output_audio_transcription": {},
+        "translation_config": {"target_language_code": target, "echo_target_language": False},
     }
 
 
@@ -123,5 +135,15 @@ async def connect(
 
     client = genai.Client(api_key=api_key)
     context = client.aio.live.connect(model=model, config=session_config(character_id, language, about))
+    session = await context.__aenter__()
+    return GeminiSession(types, context, session)
+
+
+async def connect_interpreter(api_key: str, target: str) -> GeminiSession:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+    context = client.aio.live.connect(model=INTERPRETER_MODEL, config=interpreter_config(target))
     session = await context.__aenter__()
     return GeminiSession(types, context, session)

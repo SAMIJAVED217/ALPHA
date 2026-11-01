@@ -30,6 +30,33 @@ _OTHER_NAMES = {
 }
 NAMES = {**_MAIN_NAMES, **dict(sorted(_OTHER_NAMES.items(), key=lambda item: item[1]))}
 MAIN_CHOICES = (*_MAIN_NAMES, AUTO)
+# What the live translation model can speak, from Google's documentation. It finds the spoken
+# language by itself, so only the language to speak has to be chosen.
+INTERPRETER_LANGUAGES = {
+    "en": "English", "ur": "Urdu", "ko": "Korean", "hi": "Hindi", "af": "Afrikaans", "ak": "Akan", "sq": "Albanian",
+    "am": "Amharic", "ar": "Arabic", "hy": "Armenian", "az": "Azerbaijani", "eu": "Basque", "be": "Belarusian",
+    "bn": "Bengali", "bg": "Bulgarian", "my": "Burmese", "ca": "Catalan", "zh-Hans": "Chinese (Simplified)",
+    "zh-Hant": "Chinese (Traditional)", "hr": "Croatian", "cs": "Czech", "da": "Danish", "nl": "Dutch",
+    "et": "Estonian", "fil": "Filipino", "fi": "Finnish", "fr": "French", "gl": "Galician", "ka": "Georgian",
+    "de": "German", "el": "Greek", "gu": "Gujarati", "ha": "Hausa", "he": "Hebrew", "hu": "Hungarian",
+    "is": "Icelandic", "id": "Indonesian", "it": "Italian", "ja": "Japanese", "jv": "Javanese", "kn": "Kannada",
+    "kk": "Kazakh", "km": "Khmer", "rw": "Kinyarwanda", "lo": "Lao", "lv": "Latvian", "lt": "Lithuanian",
+    "mk": "Macedonian", "ms": "Malay", "ml": "Malayalam", "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali",
+    "no": "Norwegian", "fa": "Persian", "pl": "Polish", "pt-BR": "Portuguese (Brazil)", "pt-PT": "Portuguese (Portugal)",
+    "pa": "Punjabi", "ro": "Romanian", "ru": "Russian", "sr": "Serbian", "sd": "Sindhi", "si": "Sinhala",
+    "sk": "Slovak", "sl": "Slovenian", "es": "Spanish", "su": "Sundanese", "sw": "Swahili", "sv": "Swedish",
+    "ta": "Tamil", "te": "Telugu", "th": "Thai", "tr": "Turkish", "uk": "Ukrainian", "uz": "Uzbek",
+    "vi": "Vietnamese", "zu": "Zulu",
+}
+
+
+def interpreter_code(wanted: str) -> str | None:
+    """Finds a language from a spoken or typed name, such as Urdu, or Chinese for Simplified Chinese."""
+    wanted = wanted.strip().lower()
+    for code, name in INTERPRETER_LANGUAGES.items():
+        if wanted in (code.lower(), name.lower()):
+            return code
+    return next((code for code, name in INTERPRETER_LANGUAGES.items() if name.lower().startswith(wanted)), None) if wanted else None
 MENU_NAMES = {
     "en": "English",
     "ko": "Korean (\ud55c\uad6d\uc5b4)",
