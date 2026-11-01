@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import attachments, autostart, characters, languages, paths, settings as settings_store
+from .. import attachments, autostart, characters, languages, paths, remote, settings as settings_store
 from ..audio.hub import AudioHub
 from ..audio.microphone import MicState
 from ..settings import SPEECH_LANGUAGES, Settings
@@ -113,6 +113,9 @@ class MainWindow(QMainWindow):
         self.sharing_indicator = QLabel()
         self.sharing_indicator.setObjectName("micOpen")
         self.sharing_indicator.hide()
+        self.remote_indicator = QLabel()
+        self.remote_indicator.setObjectName("micOpen")
+        self.remote_indicator.hide()
         self.hands_free_button = QPushButton("Hands-free: off")
         self.hands_free_button.setCheckable(True)
         self.hands_free_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -255,6 +258,7 @@ class MainWindow(QMainWindow):
         bottom.addWidget(self.message_button)
         bottom.addWidget(self.mic_alert)
         bottom.addWidget(self.sharing_indicator)
+        bottom.addWidget(self.remote_indicator)
         bottom.addWidget(self.waves[1])
         bottom.addStretch(1)
 
@@ -303,6 +307,13 @@ class MainWindow(QMainWindow):
         conversation.watch_found.connect(self.show_watch_result)
         conversation.quit_requested.connect(self._quit)
         conversation.reminder_due.connect(self.show_reminder)
+        self._remote = remote.RemoteServer(remote.RemoteControl(self._phone_said, conversation.interrupt))
+        to_phone = self._remote.control.push
+        conversation.replied.connect(lambda text: to_phone("reply", text))
+        conversation.reply_finished.connect(lambda: to_phone("done"))
+        conversation.notice.connect(lambda text: to_phone("notice", text))
+        conversation.state_changed.connect(lambda state, detail: to_phone("state", detail or state.label))
+        conversation.proposal_ready.connect(lambda _proposal: to_phone("notice", "This is waiting for CONFIRM on your PC."))
         self.show_mic(MicState.CLOSED)
         self.show_hands_free(Mode.OFF)
         self.show_sharing(set())
@@ -351,7 +362,7 @@ class MainWindow(QMainWindow):
 
     def _drawer_moved(self, opened: bool, other: Drawer) -> None:
         """A drawer never covers what is live, and on a small window one opens at a time."""
-        for label in (self.state_label, self.message_button, self.mic_alert, self.sharing_indicator):
+        for label in (self.state_label, self.message_button, self.mic_alert, self.sharing_indicator, self.remote_indicator):
             label.raise_()
         if opened and self.width() < LEFT_DRAWER_WIDTH + RIGHT_DRAWER_WIDTH + 60:
             other.set_open(False)
@@ -365,6 +376,7 @@ class MainWindow(QMainWindow):
 
     def refresh_panels(self) -> None:
         """Only measures while someone can see the result."""
+        self._show_remote()
         if not self.isVisible() or self.isMinimized() or self._view == "compact":
             return
         self.clock.setText(datetime.now().strftime("%H:%M:%S"))
@@ -543,6 +555,12 @@ class MainWindow(QMainWindow):
         self.mic_alert.setToolTip(text)
         self.mic_alert.setVisible(self._mic_state is not MicState.CLOSED)
 
+    def _show_remote(self) -> None:
+        """Someone reaching this PC from another device must always show on the main screen."""
+        words = "PHONE CONNECTED" if self._remote.control.connected() else "PHONE CONTROL ON"
+        self.remote_indicator.setText(f"● {words}")
+        self.remote_indicator.setVisible(self._remote.running)
+
     def _add_line(self, text: str) -> None:
         self._replying = False
         self.transcript.appendPlainText(text)
@@ -648,12 +666,17 @@ class MainWindow(QMainWindow):
         self.image_action.triggered.connect(self.choose_character_image)
         self.connections_action = QAction("Connections (Notion, Gmail, Grok)", self)
         self.connections_action.triggered.connect(self.open_connections)
-        self.remove_image_action = QAction("Remove my picture (back to default)", self)
+        self.remote_action = QAction("Phone and tablet control", self, checkable=True)
+        self.remote_action.toggled.connect(self.set_remote)
+        self.remote_code_action = QAction("New phone code", self, enabled=False)
+        self.remote_code_action.triggered.connect(self.show_remote_code)
+        self.remove_image_action =QAction("Remove my picture (back to default)", self)
         self.remove_image_action.triggered.connect(self._ask_to_remove_image)
         self.restore_image_action = QAction("Bring back my removed picture", self)
         self.restore_image_action.triggered.connect(self.restore_character_image)
         menu.aboutToShow.connect(self._update_image_actions)
-        for action in (self.about_action, self.connections_action, self.compact_action, self.fullscreen_action, self.top_action,
+        for action in (self.about_action, self.connections_action, self.remote_action, self.remote_code_action,
+                       self.compact_action, self.fullscreen_action, self.top_action,
                        self.briefing_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
             menu.addAction(action)
         choices = menu.addMenu("Language")
@@ -669,6 +692,37 @@ class MainWindow(QMainWindow):
             self.language_actions[code] = action
         choices.addMenu(everything)
         return menu
+
+    def set_remote(self, on: bool) -> None:
+        """Off forgets every device, so each new start needs a fresh code."""
+        if on:
+            try:
+                self._remote.start()
+            except OSError as error:
+                self._append_notice(f"Phone control could not start: {type(error).__name__}")
+                self.remote_action.setChecked(False)
+                return
+        else:
+            self._remote.stop()
+        self.remote_code_action.setEnabled(on)
+        self._show_remote()
+        self._update_tray()
+        if on:
+            self.show_remote_code()
+
+    def show_remote_code(self) -> None:
+        code = self._remote.control.new_code()
+        links = "\n".join(f"http://{place}:{self._remote.port}" for place in remote.addresses())
+        QMessageBox.information(
+            self, "APLHA",
+            f"On your phone or tablet, on the same Wi-Fi, open:\n\n{links}\n\nThen enter this code within "
+            f"5 minutes:\n\n{code}\n\nThis link is not encrypted, so use it on your own network. "
+            "Actions that need CONFIRM still wait here on the PC.",
+        )
+
+    def _phone_said(self, text: str) -> None:
+        self._conversation.heard.emit(f"(from phone) {text}")
+        self._conversation.send_text(text)
 
     def set_briefing(self, on: bool) -> None:
         self.settings.morning_briefing = on
@@ -763,6 +817,8 @@ class MainWindow(QMainWindow):
             live.append("microphone")
         if self._sharing:
             live.append("screen or camera sharing")
+        if self._remote.running:
+            live.append("phone control")
         return " and ".join(live)
 
     def _update_tray(self) -> None:
@@ -828,6 +884,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._talk_up()
+        self._remote.stop()
         if self._tray is not None:
             self._tray.hide()
         super().closeEvent(event)

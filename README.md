@@ -9,8 +9,8 @@
 ![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
-![AI](https://img.shields.io/badge/AI-Gemini%20Live-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-557-2EA44F)
+![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
+![Tests](https://img.shields.io/badge/Automated%20tests-605-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -41,6 +41,27 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Hold-to-talk on a key, or type
 - Press Esc to stop a reply at once
 - Each character can have its own voice
+</details>
+
+<details>
+<summary><b>Two AI brains</b>: Gemini and Grok, chosen by the task</summary>
+
+- Gemini handles live conversation, pictures, the screen and every computer tool
+- Grok is asked for hard reasoning, maths, code, long writing and second opinions
+- If Grok fails, Gemini answers itself and says so
+- If Gemini cannot answer a typed message, Grok stands in. It has no tools, so it can answer but never act
+- Spoken turns need Gemini unless offline listening is on
+</details>
+
+<details>
+<summary><b>Phone and tablet control</b>: message APLHA from another device</summary>
+
+- Turn it on from the More menu, then open the address shown on your phone or tablet
+- A device joins with a six-digit code that works once and lasts five minutes
+- Send messages, follow replies and stop a reply from the page
+- The main screen shows a pill whenever it is on
+- It cannot press CONFIRM, so sensitive actions still wait at the PC
+- Only private networks are accepted. The link is not encrypted, so use your own network
 </details>
 
 <details>
@@ -153,6 +174,8 @@ flowchart LR
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
     Talk --> Tools[64 tools]
+    Talk <--> Grok[Grok API]
+    Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
     Gate --> PC[Windows]
     Tools --> Memory[(Memory)]
@@ -181,7 +204,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         557 automated tests
+tests/         605 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>
@@ -263,7 +286,8 @@ Claims here are tested, not assumed. [docs/VERIFICATION.md](docs/VERIFICATION.md
 | Status | Features |
 | --- | --- |
 | **Seen working for real** | Voice conversation, hands-free, Esc, opening apps, typing, volume, music, weather, news, clipboard, saving a memory, photos, WhatsApp sending, a sample of language replies |
-| **Automated tests only** | Reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Notion, Grok, page watching, lock, sleep, shutdown, restart |
+| **Automated tests only** | Reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Notion, Grok, switching between Gemini and Grok, page watching, lock, sleep, shutdown, restart |
+| **Page tried, real devices not yet** | Phone and tablet control, tried in a browser against a pretend assistant |
 | **Not yet confirmed for real** | Answers about the screen, the camera, recalling a memory, KakaoTalk and other messaging apps |
 
 Tests use a temporary folder, a throwaway key store and pretend sound devices:
@@ -285,6 +309,12 @@ Not fully. Listening and the voice can run on your computer, but Gemini does the
 <summary><b>What gets sent to Google?</b></summary>
 
 Your messages, your voice during a turn, pictures you share, your About me at the start of each session, and memories when recalled. With hands-free on, anything said clearly nearby is sent, including other voices. Watched page text stays on your computer.
+</details>
+
+<details>
+<summary><b>What gets sent to xAI?</b></summary>
+
+Only with an xAI key saved: the questions Gemini chooses to pass to Grok, and your typed message if Gemini cannot answer it. Your About me is not sent with them.
 </details>
 
 <details>

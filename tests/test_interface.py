@@ -5,7 +5,7 @@ import pytest
 from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog, QMainWindow
+from PySide6.QtWidgets import QApplication, QDialog, QMainWindow, QMessageBox
 
 from alpha import icon, keystore, paths, settings as settings_store, shortcut
 from alpha.actions import ActionGate, EXPIRY_SECONDS, Outcome
@@ -164,6 +164,29 @@ def test_frame_rate_drops_at_rest(qapp):
 
 
 # Main window.
+
+
+def test_phone_control_is_off_at_start_and_always_shows_when_on(rig, monkeypatch):
+    shown = []
+    monkeypatch.setattr(QMessageBox, "information", lambda _parent, _title, text: shown.append(text))
+    monkeypatch.setattr(rig.window._remote, "_port", 0)
+    monkeypatch.setattr(rig.window._remote, "_host", "127.0.0.1")
+    assert not rig.window._remote.running and rig.window.remote_indicator.isHidden()
+    rig.window.remote_action.setChecked(True)
+    assert not rig.window.remote_indicator.isHidden()
+    assert "PHONE CONTROL ON" in rig.window.remote_indicator.text()
+    assert "phone control" in rig.window._live_inputs()
+    assert rig.window._remote.control._code in shown[0]
+    rig.window.remote_action.setChecked(False)
+    assert not rig.window._remote.running and rig.window.remote_indicator.isHidden()
+
+
+def test_a_message_from_the_phone_shows_and_goes_to_the_conversation(rig, monkeypatch):
+    sent = []
+    monkeypatch.setattr(rig.conversation, "send_text", sent.append)
+    rig.window._phone_said("hello")
+    assert sent == ["hello"]
+    assert spin_until(lambda: "(from phone) hello" in rig.window.transcript.toPlainText())
 
 
 def test_window_shows_every_state_it_is_told(rig):
