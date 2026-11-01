@@ -46,6 +46,7 @@ from .hud_panel import UNKNOWN, HudPanel
 from .hud_widgets import CharacterSwitch, HoloButton, RingGauge, Waveform
 from .memory_dialog import MemoryDialog
 from .presence_gl import make_presence
+from .professor_window import ProfessorWindow
 from .remote_dialog import RemoteDialog
 from .settings_dialog import SettingsDialog
 from .style import dark_title_bar, keep_menus_in_fullscreen, restore_window_style, window_style
@@ -309,7 +310,10 @@ class MainWindow(QMainWindow):
         conversation.watch_found.connect(self.show_watch_result)
         conversation.quit_requested.connect(self._quit)
         conversation.reminder_due.connect(self.show_reminder)
-        self._remote = remote.RemoteServer(remote.RemoteControl(self._phone_said, conversation.interrupt))
+        conversation.class_requested.connect(self.open_class)
+        conversation.class_message.connect(self._to_class)
+        self._class_window: ProfessorWindow | None = None
+        self._remote =remote.RemoteServer(remote.RemoteControl(self._phone_said, conversation.interrupt))
         to_phone = self._remote.control.push
         conversation.replied.connect(lambda text: to_phone("reply", text))
         conversation.reply_finished.connect(lambda: to_phone("done"))
@@ -518,10 +522,11 @@ class MainWindow(QMainWindow):
         look = _MIC_LOOK[state]
         if self._hands_free is not Mode.OFF and state is not MicState.CLOSED:
             look = _HANDS_FREE_LOOK[self._hands_free]
-        if state is MicState.OPEN and self._hands_free is Mode.TURN and self.settings.speech_engine == "offline":
+        stays_here = self.settings.speech_engine == "offline" or self._conversation.in_class
+        if state is MicState.OPEN and self._hands_free is Mode.TURN and stays_here:
             look = ("micOpen", "\u25cf MIC OPEN \u00b7 STAYS ON THIS PC")
         elif state is MicState.OPEN and self._hands_free is Mode.OFF:
-            where = "STAYS ON THIS PC" if self.settings.speech_engine == "offline" else "SENDING TO GEMINI"
+            where = "STAYS ON THIS PC" if stays_here else "SENDING TO GEMINI"
             look = ("micOpen", f"\u25cf MIC OPEN \u00b7 {where}")
         self._paint_mic(*look)
         self.link_panel.set_value("MIC", "OFF" if state is MicState.CLOSED else "ON")
@@ -674,7 +679,9 @@ class MainWindow(QMainWindow):
         self.image_action.triggered.connect(self.choose_character_image)
         self.connections_action = QAction("Connections (Notion, Gmail, Grok)", self)
         self.connections_action.triggered.connect(self.open_connections)
-        self.remote_action = QAction("Phone and tablet control", self, checkable=True)
+        self.class_action = QAction("Professor Mode", self)
+        self.class_action.triggered.connect(self.open_class)
+        self.remote_action =QAction("Phone and tablet control", self, checkable=True)
         self.remote_action.toggled.connect(self.set_remote)
         self.remote_code_action = QAction("New phone code", self, enabled=False)
         self.remote_code_action.triggered.connect(self.show_remote_code)
@@ -683,7 +690,7 @@ class MainWindow(QMainWindow):
         self.restore_image_action = QAction("Bring back my removed picture", self)
         self.restore_image_action.triggered.connect(self.restore_character_image)
         menu.aboutToShow.connect(self._update_image_actions)
-        for action in (self.about_action, self.connections_action, self.remote_action, self.remote_code_action,
+        for action in (self.about_action, self.connections_action, self.class_action, self.remote_action, self.remote_code_action,
                        self.compact_action, self.fullscreen_action, self.top_action,
                        self.briefing_action, self.skip_ads_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
             menu.addAction(action)
@@ -726,6 +733,15 @@ class MainWindow(QMainWindow):
     def _phone_said(self, text: str) -> None:
         self._conversation.heard.emit(f"(from phone) {text}")
         self._conversation.send_text(text)
+
+    def open_class(self) -> None:
+        if self._class_window is None:
+            self._class_window = ProfessorWindow(self._conversation, self)
+        self._class_window.start_class()
+
+    def _to_class(self, text: str) -> None:
+        if self._class_window is not None:
+            self._class_window.handle(text)
 
     def set_skip_ads(self, on: bool) -> None:
         self.settings.skip_ads = on
@@ -896,6 +912,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self._talk_up()
         self._remote.stop()
+        if self._class_window is not None:
+            self._class_window.end_class()
         if self._tray is not None:
             self._tray.hide()
         super().closeEvent(event)

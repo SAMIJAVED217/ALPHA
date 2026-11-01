@@ -18,6 +18,7 @@ and `sounddevice` ships a ready-built Windows audio library for it.
 | Open-Meteo | service | Free, no key | Weather. Only the city name and its position are sent. |
 | Google News RSS | service | Free, no key | Headlines. Only the topic is sent. |
 | pypdf | 6.21.4 | BSD-3-Clause | Reads text from PDFs. |
+| pypdfium2 | 5.14.0 | BSD-3-Clause, Apache-2.0 | Draws PDF pages as pictures when Gemini will not read a PDF directly. |
 | vosk | 0.3.45 | Apache-2.0 | Offline "hey" and "hi" listening, in its own process. |
 | faster-whisper | 1.2.1 | MIT | Offline speech recognition, in its own process. |
 | faster-whisper-base | Systran | MIT | The Whisper speech model. Downloaded by the installer, not stored in this repository. |

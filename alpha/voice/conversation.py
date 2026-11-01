@@ -32,6 +32,7 @@ from ..audio.speaker import Speaker
 from ..settings import Settings
 from ..memory import MemoryStore
 from ..state import State
+from ..professor.professor_mode import is_enter, is_for_aplha
 from ..tools import catalogue
 from ..tools.computer import skip_ad
 from ..tools.registry import ToolBox, ToolRefused
@@ -122,6 +123,8 @@ class Conversation(QObject):
     quit_requested = Signal()
     reminder_due = Signal(str)
     link_changed = Signal(bool)
+    class_requested = Signal()
+    class_message = Signal(str)
 
     def __init__(
         self,
@@ -168,6 +171,7 @@ class Conversation(QObject):
         self._silenced = False
         self._backup = backup
         self._unanswered = ""
+        self._in_class = False
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
             lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone)
@@ -206,7 +210,12 @@ class Conversation(QObject):
 
     @property
     def _offline(self) -> bool:
-        return self._settings.speech_engine == "offline"
+        """During class the words go to the professor, so speech is handled on this PC."""
+        return self._settings.speech_engine == "offline" or self._in_class
+
+    @property
+    def in_class(self) -> bool:
+        return self._in_class
 
     async def _connect_gemini(self, key: str, model: str) -> LiveSession:
         settings = self._settings
@@ -269,6 +278,40 @@ class Conversation(QObject):
 
     def send_text(self, text: str) -> None:
         self._hop(self._begin_text, text)
+
+    def set_class(self, on: bool) -> None:
+        self._hop(self._change_class, on)
+
+    def _change_class(self, on: bool) -> None:
+        self._in_class = on
+        self._prepare_offline_speech()
+
+    def say_aloud(self, text: str) -> None:
+        self._hop(self._say_aloud, text)
+
+    def _say_aloud(self, text: str) -> None:
+        """For the professor's one spoken line. The rest of a reply is only shown."""
+        if self._narrator is None:
+            return
+        self._reply_ended = False
+        self._unsaid = ""
+        self._offline_reply_text(text)
+        self._finish_offline_reply()
+
+    def _went_to_class(self, text: str) -> bool:
+        """Text from any source passes here, so typing and speaking behave the same."""
+        if self._in_class and not is_for_aplha(text):
+            self.class_message.emit(text)
+        elif not self._in_class and is_enter(text):
+            self.class_requested.emit()
+        else:
+            return False
+        self._unanswered = ""
+        self._stop_waiting_for_reply()
+        if self._mode is Mode.REPLYING:
+            self._open_follow_up()
+        self._go_to_rest()
+        return True
 
     def talk_pressed(self) -> None:
         self._hop(self._begin_talk)
@@ -597,6 +640,8 @@ class Conversation(QObject):
         self._spawn(self._send_text(text))
 
     async def _send_text(self, text: str) -> None:
+        if self._went_to_class(text):
+            return
         self._unanswered = text
         try:
             session = await self._session_ready()
@@ -1105,6 +1150,8 @@ class Conversation(QObject):
         self._answer_tool(request.call_id, request.name, result)
         if request.name == catalogue.QUIT_TOOL:
             self._loop.call_later(QUIT_DELAY_SECONDS, self.quit_requested.emit)
+        if request.name == catalogue.CLASS_TOOL:
+            self.class_requested.emit()
 
     def _local_proposal(self, file_name: str, content: str) -> None:
         try:

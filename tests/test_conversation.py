@@ -13,6 +13,7 @@ from alpha.state import State
 from alpha.voice import conversation as conversation_module
 from alpha.voice.conversation import Conversation, describe_failure
 from alpha.voice.events import HeardText, ReplyAudio, ReplyDone, ReplyInterrupted, ReplyText, ToolRequest
+from alpha.voice.gemini import session_config
 from alpha.tools.catalogue import declarations
 from alpha.voice.persona import PROPOSE_TOOL_NAME
 
@@ -218,6 +219,64 @@ def test_esc_throws_away_a_late_answer_from_grok(rig):
     release.set()
     time.sleep(0.1)
     assert r.replies == []
+
+
+def test_saying_professor_mode_opens_the_class_and_sends_nothing_to_gemini(rig):
+    r = rig()
+    opened = []
+    r.conversation.class_requested.connect(lambda: opened.append(1))
+    r.conversation.send_text("professor mode")
+    assert wait_until(lambda: opened)
+    assert r.sessions == []
+    assert wait_until(lambda: r.states[-1] is State.IDLE)
+
+
+def test_during_class_words_go_to_the_professor_not_to_gemini(rig):
+    r = rig()
+    heard = []
+    r.conversation.class_message.connect(heard.append)
+    r.conversation.set_class(True)
+    assert wait_until(lambda: r.conversation.in_class)
+    r.conversation.send_text("why is that")
+    assert wait_until(lambda: heard == ["why is that"])
+    assert r.sessions == []
+
+
+def test_during_class_a_message_to_aplha_is_a_normal_command(rig):
+    r = rig()
+    heard = []
+    r.conversation.class_message.connect(heard.append)
+    r.conversation.set_class(True)
+    assert wait_until(lambda: r.conversation.in_class)
+    r.conversation.send_text("Alpha, open notepad")
+    assert wait_until(lambda: r.sessions and r.session.sent == [("text", "Alpha, open notepad")])
+    assert heard == []
+
+
+def test_after_class_everything_is_normal_again(rig):
+    r = rig()
+    heard = []
+    r.conversation.class_message.connect(heard.append)
+    r.conversation.set_class(True)
+    assert wait_until(lambda: r.conversation.in_class)
+    r.conversation.set_class(False)
+    assert wait_until(lambda: not r.conversation.in_class)
+    assert not r.conversation._offline
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: r.sessions and r.session.sent == [("text", "hello")])
+    assert heard == []
+
+
+def test_no_professor_rules_can_leak_into_normal_chat():
+    system = session_config()["system_instruction"]
+    assert "Slide says" not in system and "rigorous university professor" not in system
+
+
+def test_during_class_speech_is_handled_on_this_pc(rig):
+    r = rig()
+    assert not r.conversation._offline
+    r.conversation.set_class(True)
+    assert wait_until(lambda: r.conversation._offline)
 
 
 def test_silent_gemini_is_reported_rather_than_waited_on_for_ever(rig, monkeypatch):

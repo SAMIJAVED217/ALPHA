@@ -15,6 +15,11 @@ settings.json
 *.db
 *.sqlite
 
+# Professor Mode's personal study details and saved classes.
+prompts/professor/
+config/professor.json
+sessions/
+
 # The owner's private characters. Only APLHA is published.
 assets/characters/*
 !assets/characters/aplha.png

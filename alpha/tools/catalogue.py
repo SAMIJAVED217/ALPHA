@@ -18,6 +18,7 @@ from ..watchdog import WatchBoard
 
 QUIT_TOOL = "close_aplha"
 VIEW_TOOL = "share_view"
+CLASS_TOOL = "start_professor_mode"
 
 _FILE_PARAMETERS = {
     "file_name": ("STRING", "Name only, no folders, ending in .txt, .md, .csv, .json or .log."),
@@ -39,6 +40,10 @@ def _update_about_me(arguments):
 
 def _closing(_arguments):
     return {"ok": True, "detail": "Closing APLHA."}
+
+
+def _opening_class(_arguments):
+    return {"ok": True, "detail": "Opening Professor Mode."}
 
 
 def _run_by_the_conversation(_arguments):
@@ -70,6 +75,8 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
             *everyday_tools(reminders, WebInfo(), computer),
             *file_tools(computer, undo),
             Tool(QUIT_TOOL, "Close APLHA itself, only when the owner asks.", run=_closing),
+            Tool(CLASS_TOOL, "Open Professor Mode, when the owner says professor mode, start class or teach me.",
+                 run=_opening_class),
             Tool(
                 VIEW_TOOL,
                 "Turn the owner's camera or screen sharing on or off, only when they ask you to look or stop.",

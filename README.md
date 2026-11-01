@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-644-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-719-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -52,6 +52,17 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - If it fails, Gemini answers itself and says so
 - If Gemini cannot answer a typed message, the second AI stands in. It has no tools, so it can answer but never act
 - Spoken turns need Gemini unless offline listening is on
+</details>
+
+<details>
+<summary><b>Professor Mode</b>: lecture slides taught page by page</summary>
+
+- Say "professor mode", or choose it from the More menu
+- Pick a course, a lecture and your goal, then choose PDF or picture slides
+- Gemini reads the pages itself, so slides in other languages and picture-only slides work
+- Slides are taught a few at a time, in order, and "next" moves on
+- Only the first line is spoken. Notes appear in their own window
+- Course rules live in private prompt files, which are not published
 </details>
 
 <details>
@@ -177,7 +188,7 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[66 tools]
+    Talk --> Tools[67 tools]
     Talk <--> Second[Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
@@ -197,7 +208,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 66 declared tools, of which only shutdown and restart ask |
+| **Tools** | 67 declared tools, of which only shutdown and restart ask |
 
 ```text
 alpha/
@@ -208,7 +219,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         644 automated tests
+tests/         719 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>
