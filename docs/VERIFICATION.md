@@ -87,6 +87,7 @@ Built from the spec's feature list.
 | Start with Windows | The real shortcut was made and removed in a test folder | A real reboot has not been tried. |
 | Reminders, moving, renaming, copying, organising, undo for files, morning briefing | Not yet in the real app | Automated tests only, using real files in temporary folders for file actions. |
 | About me and imported memories | Yes, real Gemini answered from them | Filled from the owner's own Claude memory export. The student number and anything resembling a secret were left out. About me goes to Gemini with each session. Memories go only when recalled. |
+| The full language list | A sample of 12 languages was tried on real Gemini | Every language the offline model hears can be chosen. Only the sampled languages have had a real reply. Offline voices depend on Windows. |
 | Grok | Not yet | Needs the owner's xAI key. Automated tests only, against a pretend service. The model name `grok-latest` came from a third-party listing, not xAI's own documents. |
 | KakaoTalk | Not yet | The steps are built but have not been run on the real app. |
 | Face | Removed at the owner's request | The code and the saved hologram are gone. |

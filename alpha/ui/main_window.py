@@ -659,12 +659,15 @@ class MainWindow(QMainWindow):
         choices = menu.addMenu("Language")
         group = QActionGroup(self)
         self.language_actions = {}
+        everything = QMenu("All languages", choices)
+        everything.setStyleSheet("QMenu { menu-scrollable: 1; }")
         for code, name in SPEECH_LANGUAGES.items():
             action = QAction(name, self, checkable=True, checked=code == self.settings.speech_language)
             action.triggered.connect(lambda _on, chosen=code: self.choose_language(chosen))
             group.addAction(action)
-            choices.addAction(action)
+            (choices if code in languages.MAIN_CHOICES else everything).addAction(action)
             self.language_actions[code] = action
+        choices.addMenu(everything)
         return menu
 
     def set_briefing(self, on: bool) -> None:

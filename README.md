@@ -23,7 +23,7 @@ Most assistants either only chat, or can act but are trusted blindly. APLHA is b
 | **Web watching** | Checks a page every 15 minutes and alerts you to new lines that match your words |
 | **Memory** | Long-term memory you can view, search, edit, export and delete, plus an About me profile |
 | **Seeing** | Shares the screen or camera only while you switch it on |
-| **Languages** | English, Korean, Urdu and Hindi, with what each engine supports shown in the app |
+| **Languages** | About 100 languages to choose from, or matching how you speak, with what each engine supports shown in the app |
 | **Connections** | Optional Notion, Gmail and Grok |
 | **Interface** | A live scene drawn on the graphics chip, with energy waves that follow the voice |
 

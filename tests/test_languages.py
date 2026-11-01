@@ -17,6 +17,38 @@ def laptop_voices(monkeypatch):
     monkeypatch.setattr(languages, "installed_voices", lambda: dict(VOICES))
 
 
+def test_every_language_is_one_the_offline_model_can_hear():
+    from faster_whisper.tokenizer import _LANGUAGE_CODES
+
+    assert set(languages.NAMES) == set(_LANGUAGE_CODES)
+
+
+def test_common_choices_stay_on_top_and_the_rest_are_listed(hud):  # noqa: F811
+    window, _ = hud
+    assert set(languages.MAIN_CHOICES) == {"en", "ko", "ur", "hi", "auto"}
+    window.language_actions["ja"].trigger()
+    assert settings.load().speech_language == "ja"
+
+
+def test_any_language_can_be_instructed():
+    for code, name in languages.NAMES.items():
+        assert f"Reply in {name}" in languages.instruction(code)
+
+
+@pytest.mark.parametrize(
+    "words, code",
+    [
+        ("\u3053\u3093\u306b\u3061\u306f\u4e16\u754c", "ja"),
+        ("\u4f60\u597d", "zh"),
+        ("\u041f\u0440\u0438\u0432\u0435\u0442", "ru"),
+        ("\u0645\u0631\u062d\u0628\u0627", "ar"),
+        ("\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35", "th"),
+    ],
+)
+def test_other_scripts_are_recognised(words, code):
+    assert languages.language_of(words) == code
+
+
 def test_english_korean_urdu_and_hindi_are_all_offered():
     assert list(SPEECH_LANGUAGES)[:4] == ["en", "ko", "ur", "hi"]
 
