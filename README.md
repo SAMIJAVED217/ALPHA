@@ -2,7 +2,7 @@
 
 # APLHA
 
-**A voice-first AI companion for Windows that can see, remember and act on your computer,<br>with a safety gate the AI cannot press for itself.**
+**A voice-first AI companion for Windows that can see, remember and act on your computer.**
 
 *Written APLHA, spoken "Alpha".*
 
