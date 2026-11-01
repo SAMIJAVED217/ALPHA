@@ -7,6 +7,8 @@ can change APLHA's normal persona or conversation.
 from __future__ import annotations
 
 import logging
+import math
+import re
 import time
 from typing import Callable
 
@@ -17,7 +19,10 @@ log = logging.getLogger(__name__)
 MOST_TRIES = 3
 FIRST_WAIT_SECONDS = 4.0
 TIMEOUT_MS = 400_000
+LONGEST_WAIT_SECONDS = 60.0
 _TRY_AGAIN_CODES = (429, 500, 502, 503, 504)
+_DAILY_LIMIT = re.compile(r"per.?day|daily", re.IGNORECASE)
+_WAIT_ASKED_FOR = re.compile(r"retry(?:delay)?\D{0,12}(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
 
 class TeachingError(Exception):
@@ -81,15 +86,29 @@ class ProfessorModel:
                 return self._client.models.generate_content(model=self._model, contents=contents, config=config)
             except Exception as error:
                 code = getattr(error, "code", None)
-                log.warning("Gemini call failed: %s %s", type(error).__name__, code)
+                log.warning("Gemini call failed: %s %s: %s", type(error).__name__, code, str(error)[:300])
                 if code in _TRY_AGAIN_CODES and attempt < MOST_TRIES:
-                    wait = FIRST_WAIT_SECONDS * 2 ** (attempt - 1)
-                    self._on_wait(f"Gemini is busy. Trying again in {wait:.0f} seconds ({attempt} of {MOST_TRIES - 1}).")
-                    self._sleep(wait)
+                    self._count_down(self._wait_for(error, attempt), attempt)
                     continue
+                if code == 429 and _DAILY_LIMIT.search(str(error)):
+                    # This wording also appears on short limits, so it is only a possibility.
+                    raise TeachingError("Gemini's free limit may be used up for now. Your place is saved, so try again later.") from error
                 if code in _TRY_AGAIN_CODES:
-                    raise TeachingError("Gemini is still busy or the free limit is reached. Try next again later.") from error
+                    raise TeachingError("Gemini is still busy. Your place is kept, so try again in a minute.") from error
                 if code == 400 and has_files:
                     raise SlidesRefused("Gemini would not read the slides in that form.") from error
                 raise TeachingError(f"Gemini could not answer ({type(error).__name__}).") from error
         raise TeachingError("Gemini could not answer.")
+
+    @staticmethod
+    def _wait_for(error: Exception, attempt: int) -> float:
+        """Doubles each time, or waits as long as Gemini asks, whichever is longer."""
+        asked = _WAIT_ASKED_FOR.search(str(error))
+        wait = max(FIRST_WAIT_SECONDS * 2 ** (attempt - 1), float(asked[1]) if asked else 0.0)
+        return min(wait, LONGEST_WAIT_SECONDS)
+
+    def _count_down(self, wait: float, attempt: int) -> None:
+        for left in range(math.ceil(wait), 0, -1):
+            unit = "second" if left == 1 else "seconds"
+            self._on_wait(f"Gemini is busy. Trying again in {left} {unit} (try {attempt + 1} of {MOST_TRIES}).")
+            self._sleep(1)

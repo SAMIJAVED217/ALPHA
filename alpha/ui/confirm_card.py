@@ -120,7 +120,8 @@ class ConfirmCard(QFrame):
     def _show_time_left(self) -> None:
         if self._proposal is not None:
             left = self._gate.seconds_left(self._proposal)
-            self._countdown.setText(f"Say confirm or cancel. Expires in {left:.0f} s")
+            words = "your keyword" if self._proposal.owner_only else "confirm"
+            self._countdown.setText(f"Say {words} or cancel. Expires in {left:.0f} s")
             self._time_bar.setValue(int(1000 * left / EXPIRY_SECONDS))
 
     def _cancel(self) -> None:

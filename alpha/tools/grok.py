@@ -130,8 +130,8 @@ class GrokClient:
         return self.ask(question[:LONGEST_QUESTION], STAND_IN)[:LONGEST_ANSWER]
 
 
-def groq_client(load_key=lambda: keystore.load_secret(GROQ_KEY_ACCOUNT), transport=None) -> GrokClient:
-    return GrokClient(load_key, transport, GROQ_ROOT, "Groq", choose_groq_model)
+def groq_client(load_key=lambda: keystore.load_secret(GROQ_KEY_ACCOUNT), transport=None, picker=choose_groq_model) -> GrokClient:
+    return GrokClient(load_key, transport, GROQ_ROOT, "Groq", picker)
 
 
 class SecondAI:

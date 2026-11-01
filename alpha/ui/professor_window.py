@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..professor import professor_mode as professor
-from ..professor import math_render, slide_loader
+from ..professor import math_render, renderer, session_store, slide_loader
 from ..professor.llm_router import ProfessorModel, TeachingError
 from ..professor.professor_mode import Lesson, ProfessorSetupError
 from .style import dark_title_bar
@@ -30,7 +30,8 @@ log = logging.getLogger(__name__)
 
 CHOOSING_COURSE, GIVING_DETAILS, CHOOSING_SLIDES, TEACHING = "course", "details", "slides", "teaching"
 SLIDE_FILTER = "Slides (*.pdf *.png *.jpg *.jpeg)"
-CONTROLS = ("Next", "Simpler", "Deeper", "Example", "Why?", "Quiz me", "Summary")
+CONTROLS = ("Next", "Simpler", "Deeper", "Example", "Why?", "Quiz me", "Summary", "Export")
+RESUME_CHOICES = 3
 
 
 class Notes(QTextBrowser):
@@ -53,7 +54,8 @@ class ProfessorWindow(QDialog):
     _answered = Signal(object, object)
     _waiting = Signal(str)
 
-    def __init__(self, conversation, parent=None, config_path=None, prompts=None, make_model=ProfessorModel):
+    def __init__(self, conversation, parent=None, config_path=None, prompts=None, make_model=ProfessorModel,
+                 sessions=None):
         super().__init__(parent)
         self.setWindowTitle("Professor Mode")
         self.resize(880, 640)
@@ -61,6 +63,8 @@ class ProfessorWindow(QDialog):
         self._config_path = config_path
         self._prompts = prompts
         self._make_model = make_model
+        self._sessions = sessions
+        self._saved: list[session_store.SavedClass] = []
         self._stage = ""
         self._config = None
         self._course = None
@@ -158,12 +162,19 @@ class ProfessorWindow(QDialog):
         self.notes.clear()
         while self._course_grid.count():
             self._course_grid.takeAt(0).widget().deleteLater()
+        self._saved = session_store.saved_classes(self._sessions)
+        for row, saved in enumerate(self._saved[:RESUME_CHOICES]):
+            button = QPushButton(f"Resume: {saved.label}".replace("&", "&&"))
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda _checked=False, chosen=saved: self.resume(chosen))
+            self._course_grid.addWidget(button, row, 0, 1, 2)
+        first_row = min(len(self._saved), RESUME_CHOICES)
         for index, course in enumerate(self._config.courses):
             button = QPushButton(course.name.replace("&", "&&"))  # A lone & would underline the next letter.
             button.setAutoDefault(False)
             button.clicked.connect(lambda _checked=False, chosen=course: self.choose_course(chosen))
-            self._course_grid.addWidget(button, index // 2, index % 2)
-        self._course_grid.setRowStretch(len(self._config.courses), 1)
+            self._course_grid.addWidget(button, first_row + index // 2, index % 2)
+        self._course_grid.setRowStretch(first_row + len(self._config.courses), 1)
         self.course_area.show()
         self.notes.hide()
         self.choose_button.hide()
@@ -177,6 +188,7 @@ class ProfessorWindow(QDialog):
     def end_class(self) -> None:
         if not self.in_class:
             return
+        self._save()
         self._stage = ""
         self._lesson = None
         self._conversation.set_class(False)
@@ -196,6 +208,11 @@ class ProfessorWindow(QDialog):
     def handle(self, text: str) -> None:
         if professor.is_exit(text):
             self.end_class()
+        elif self._stage == CHOOSING_COURSE and professor.is_resume(text):
+            if self._saved:
+                self.resume(self._saved[0])
+            else:
+                self._say("There is no saved class yet. Which course shall we study?")
         elif self._stage == CHOOSING_COURSE:
             course = professor.find_course(text, self._config.courses)
             if course is None:
@@ -205,6 +222,8 @@ class ProfessorWindow(QDialog):
         elif self._stage == GIVING_DETAILS:
             self._lecture, self._goal = text, professor.find_goal(text)
             self.choose_slides()
+        elif self._stage == TEACHING and professor.is_export(text):
+            self.export()
         elif self._stage == TEACHING and not self._busy:
             self._add_note(math_render.Prepared(f"**You:** {text}"))
             self._run(lambda: self._lesson.respond(text))
@@ -239,13 +258,55 @@ class ProfessorWindow(QDialog):
             self.status.setText("Those files have no pages.")
             return
         model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit)
-        self._lesson = Lesson(self._course, self._system, self._lecture, self._goal, slides, model, self._config)
+        self._lesson = Lesson(self._course, self._system, self._lecture, self._goal, slides, model, self._config,
+                              professor.groq_followups(self._config), professor.groq_standby(self._config))
+        self._show_teaching()
+        self._run(self._lesson.teach_next)
+
+    def _show_teaching(self) -> None:
         self._stage = TEACHING
+        self.course_area.hide()
         self.choose_button.hide()
         self.control_area.show()
         self.notes.show()
         self.input.setPlaceholderText("Ask anything, or say next")
-        self._run(self._lesson.teach_next)
+
+    def resume(self, saved: session_store.SavedClass) -> None:
+        course = next((item for item in self._config.courses if item.id == saved.data["course_id"]), None)
+        if course is None:
+            self._say("That course is no longer in the config.")
+            return
+        try:
+            system = professor.build_system_prompt(course.id, self._prompts)
+            slides = slide_loader.load(saved.data["files"])
+            model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit)
+            self._lesson = Lesson.restored(saved.data, course, system, slides, model, self._config,
+                                           professor.groq_followups(self._config), professor.groq_standby(self._config))
+        except (ProfessorSetupError, slide_loader.SlideError) as error:
+            self._say(f"That class could not be resumed. {error}")
+            return
+        self._course = course
+        self._lecture = self._lesson.lecture
+        self.heading.setText(course.name)
+        self._show_teaching()
+        words = f"Welcome back. We have covered {self._lesson.pointer} of {self._lesson.total} slides."
+        notes = "\n\n---\n\n".join(self._lesson.transcript) or words
+        self._run(lambda: renderer.Reply(words, notes))
+
+    def _save(self) -> None:
+        if self._lesson is not None:
+            try:
+                session_store.save(self._lesson, self._sessions)
+            except OSError as error:
+                self.status.setText(f"This class could not be saved ({type(error).__name__}).")
+
+    def export(self) -> None:
+        try:
+            path = session_store.export_notes(self._lesson)
+        except (ProfessorSetupError, OSError) as error:
+            self.status.setText(f"The notes were not exported. {error}")
+            return
+        self.status.setText(f"Notes saved as {path.name} in the course folder.")
 
     def _run(self, work) -> None:
         self._set_busy(True)
@@ -285,6 +346,7 @@ class ProfessorWindow(QDialog):
         self._add_note(prepared)
         self._conversation.say_aloud(reply.spoken)
         self._show_progress()
+        self._save()
         if self._lesson.needs_closing:
             self._run(self._lesson.teach_next)
             self.status.setText("Writing the summary and exam questions. This can take several minutes.")

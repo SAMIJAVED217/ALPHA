@@ -68,6 +68,8 @@ def memory_tools(store: MemoryStore, undo: UndoStack | None = None) -> list[Tool
             saying,
             ("text",),
             propose=plan_sensitive,
+            always_asks=True,
+            owner_only=True,
         ),
         Tool(
             "propose_forget",
@@ -75,5 +77,7 @@ def memory_tools(store: MemoryStore, undo: UndoStack | None = None) -> list[Tool
             {"id": (INTEGER, "The memory's id, from recall.")},
             ("id",),
             propose=plan_forget,
+            always_asks=True,
+            owner_only=True,
         ),
     ]

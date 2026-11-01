@@ -7,6 +7,7 @@ from keyring.errors import KeyringError, PasswordDeleteError
 
 SERVICE = "ALPHA"
 ACCOUNT = "gemini-api"
+KEYWORD_ACCOUNT = "owner-keyword"
 
 
 class KeyStoreError(RuntimeError):

@@ -59,7 +59,11 @@ class ConnectionsDialog(QDialog):
         self.groq_button, self.groq_status = self._connect_row(
             "Groq", grok.GROQ_KEY_ACCOUNT, lambda: self._check("Groq", self.groq_button, self.groq_status, self._groq.check)
         )
-        self.gmail_id =QLineEdit(keystore.load_secret(gmail.CLIENT_ID_ACCOUNT))
+        self.keyword = self._secret_field(keystore.KEYWORD_ACCOUNT, "Common English words, known only to you")
+        self.keyword_note = QLabel("Changing your details will need this spoken. It works after APLHA restarts.")
+        self.keyword_note.setObjectName("detail")
+        self.keyword_note.setWordWrap(True)
+        self.gmail_id = QLineEdit(keystore.load_secret(gmail.CLIENT_ID_ACCOUNT))
         self.gmail_id.setPlaceholderText("Google OAuth client id")
         self.gmail_secret = self._secret_field(gmail.CLIENT_SECRET_ACCOUNT, "Google OAuth client secret")
         self.gmail_button = QPushButton("Connect Gmail in your browser")
@@ -79,6 +83,8 @@ class ConnectionsDialog(QDialog):
             row.addWidget(button)
             form.addRow(name, row)
             form.addRow("", status)
+        form.addRow("Spoken keyword", self.keyword)
+        form.addRow("", self.keyword_note)
         form.addRow("Gmail client id", self.gmail_id)
         form.addRow("Gmail client secret", self.gmail_secret)
         form.addRow("", self.gmail_button)
@@ -118,6 +124,7 @@ class ConnectionsDialog(QDialog):
             (notion.TOKEN_ACCOUNT, self.notion_token),
             (grok.KEY_ACCOUNT, self.grok_key),
             (grok.GROQ_KEY_ACCOUNT, self.groq_key),
+            (keystore.KEYWORD_ACCOUNT, self.keyword),
             (gmail.CLIENT_ID_ACCOUNT, self.gmail_id),
             (gmail.CLIENT_SECRET_ACCOUNT, self.gmail_secret),
         ):

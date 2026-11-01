@@ -316,6 +316,7 @@ class MainWindow(QMainWindow):
         conversation.class_message.connect(self._to_class)
         conversation.interpreter_requested.connect(self.open_interpreter)
         conversation.reader_requested.connect(self.open_reader)
+        conversation.aplha_command.connect(self._voice_command)
         self._reader_window: ReaderWindow | None = None
         self._interpreter_window: InterpreterWindow | None = None
         self._class_window: ProfessorWindow | None = None
@@ -758,6 +759,25 @@ class MainWindow(QMainWindow):
         if self._reader_window is None:
             self._reader_window = ReaderWindow(self._conversation, self.settings, self)
         self._reader_window.open_with(target, source)
+
+    def _voice_command(self, action: str) -> None:
+        """Goes through the same switches as the menu, so everything stays in step."""
+        choices = {
+            "fullscreen": self.fullscreen_action, "compact": self.compact_action, "always on top": self.top_action,
+        }
+        name, _, state = action.rpartition(" ")
+        if name in choices:
+            choices[name].setChecked(state == "on")
+        elif action == "hands free on":
+            self._conversation.set_hands_free(True)
+        elif action in ("hands free off", "mic off"):
+            self._conversation.set_hands_free(False)
+        elif action == "hide to tray":
+            self.hide_to_tray()
+        elif action == "open memory":
+            self.open_memory()
+        elif action == "open connections":
+            self.open_connections()
 
     def _to_class(self, text: str) -> None:
         if self._class_window is not None:

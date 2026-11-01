@@ -42,7 +42,9 @@ def test_the_session_is_told_what_the_owner_shared():
 def test_telling_aplha_something_updates_one_answer_only():
     profile.save({"name": "Sami"})
     tool = build_toolbox(None).get("update_about_me")
-    tool.run({"field": "city", "text": "Seoul"})
+    plan = tool.propose({"field": "city", "text": "Seoul"})
+    assert profile.load() == {"name": "Sami"}
+    plan.perform()
     assert profile.load() == {"name": "Sami", "city": "Seoul"}
 
 
@@ -50,7 +52,7 @@ def test_a_made_up_field_is_refused():
     from alpha.tools.registry import ToolRefused
 
     with pytest.raises(ToolRefused):
-        build_toolbox(None).get("update_about_me").run({"field": "password", "text": "x"})
+        build_toolbox(None).get("update_about_me").propose({"field": "password", "text": "x"})
 
 
 def test_the_form_saves_what_is_typed(qapp):

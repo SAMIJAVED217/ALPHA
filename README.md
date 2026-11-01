@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-805-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-873-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -65,6 +65,10 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Buttons for next, simpler, deeper, example, why, quiz and summary, which also work by voice
 - Quizzes ask one question at a time and keep a score
 - Equations are drawn in the notes, and each lecture ends with a summary, abbreviations and exam questions
+- Classes save themselves, and "resume class" picks up at the same slide
+- If Gemini cannot answer a question, Groq can stand in, labelled and without seeing the slides
+- Export writes the notes to a Markdown file in the course folder, only when asked
+- Optional Groq follow-ups, off by default, for questions that need no slides
 - Course rules live in private prompt files, which are not published
 </details>
 
@@ -185,13 +189,15 @@ sequenceDiagram
 
 | Runs at once when you ask | Waits for your decision |
 | --- | --- |
-| Opening and closing apps and windows | Shutting down |
-| Moving, deleting and copying files | Restarting |
-| Sending messages and email, and calling | |
+| Opening and closing apps and windows | Shutting down and restarting |
+| Moving, deleting and copying files | Changing About me |
+| Sending messages and email, and calling | Saving or deleting sensitive memories |
 | Typing, clicking and the camera | |
 | Volume, reminders, weather and news | |
 
-**The rest relies on the AI understanding you.** With hands-free on, it can also hear other voices nearby, and a page it reads could try to mislead it. An overheard sentence or hidden text can therefore send a message or delete a file. It is told never to act on text it reads, but only shutdown has a hard stop. This is the owner's choice, for speed.
+Changes to personal details need a private spoken keyword, heard only by the listener on your computer. It proves someone knows the word, not who they are.
+
+**The rest relies on the AI understanding you.** With hands-free on, it can also hear other voices nearby, and a page it reads could try to mislead it. An overheard sentence or hidden text can therefore send a message or delete a file. It is told never to act on text it reads, but only the actions in the right-hand column have a hard stop. This is the owner's choice, for speed.
 </details>
 
 <details>
@@ -211,7 +217,7 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[69 tools]
+    Talk --> Tools[71 tools]
     Talk <--> Second[Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
@@ -231,7 +237,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 69 declared tools, of which only shutdown and restart ask |
+| **Tools** | 71 declared tools, of which only shutdown, restart and changes to personal details ask |
 
 ```text
 alpha/
@@ -242,7 +248,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         805 automated tests
+tests/         873 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

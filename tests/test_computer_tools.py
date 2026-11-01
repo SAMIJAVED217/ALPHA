@@ -217,7 +217,7 @@ def test_only_harmless_tools_run_without_confirmation(box):
         "watch_page", "list_watches", "stop_watching", "close_aplha", "share_view", "call_person", "start_professor_mode", "start_live_translation", "open_translated_reader", "cancel_power_off", "lock_computer",
         "sleep_computer", "play_media", "media_control", "get_time", "set_reminder", "list_reminders",
         "cancel_reminder", "get_weather", "get_news", "read_clipboard", "write_clipboard", "list_folder",
-        "find_files", "read_file", "update_about_me",
+        "find_files", "read_file", "control_aplha", "learn_lesson",
     }
 
 
@@ -410,7 +410,8 @@ def test_closing_a_window_runs_at_once(rig, computer):
 
 
 def test_only_shutting_down_and_restarting_ask(box):
-    assert {name for name in box.names if box.get(name).always_asks} == {"propose_power_off"}
+    asking = {name for name in box.names if box.get(name).always_asks}
+    assert {"propose_power_off"} <= asking and "propose_send_message" not in asking
 
 
 def test_what_the_owner_asks_for_runs_at_once_even_in_a_named_file(rig, computer):

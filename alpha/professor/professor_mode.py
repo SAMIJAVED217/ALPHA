@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import renderer, slide_loader
-from .llm_router import ProfessorModel, SlidesRefused
+from ..tools.registry import ToolRefused
+from .llm_router import ProfessorModel, SlidesRefused, TeachingError
 
 log = logging.getLogger(__name__)
 
@@ -23,13 +24,22 @@ CONFIG = ROOT / "config" / "professor.json"
 SMALLEST_CHUNK = 5
 LARGEST_CHUNK = 8
 GOALS = {"exam": "exam prep", "review": "quick review", "learn": "learn new material"}
-_ENTER = re.compile(r"^(please\s+)?(professor mode|start (the )?class|teach me)\b", re.IGNORECASE)
+_ENTER = re.compile(r"^(please\s+)?(professor mode|(start|resume) (the )?class|teach me)\b", re.IGNORECASE)
 _EXIT = re.compile(r"^(please\s+)?(exit professor mode|end (the )?class)\b", re.IGNORECASE)
 _FOR_APLHA = re.compile(r"^\W*(hey\s+)?(alpha|aplha)\b(?!\s+(particles?|decay|rays?|radiation)\b)", re.IGNORECASE)
 _NEXT_WORDS = ("next", "next slides", "continue")
 _QUIZ_WORDS = ("quiz me", "quiz")
 _STOP_QUIZ_WORDS = ("stop quiz", "end quiz", "stop the quiz", "end the quiz")
 _CONTROL_WORDS = ("simpler", "deeper", "example", "why", "summary")
+_FOLLOW_UP_WORDS = ("simpler", "deeper", "why")
+_RESUME_WORDS = ("resume", "resume class", "resume the class")
+_EXPORT_WORDS = ("export", "export notes", "save notes")
+GROQ_TURNS = 4
+LONGEST_GROQ_QUESTION = 8_000
+_SUMMARY_RULE = (
+    "Summarise this part of a class in under 150 words, for the tutor's own memory. Keep which slides were covered, "
+    "what the student found hard, and any exam details they gave. Output only the summary."
+)
 _RESULT = re.compile(r"^[ \t*_`]*RESULT:[ \t]*(correct|wrong)[ \t*_`.]*$", re.IGNORECASE | re.MULTILINE)
 # How to mark a grade, so the app can keep the score. What to teach stays in the prompt files.
 _NO_SCORE = "Do not state a score or count questions, because the app keeps the score."
@@ -63,6 +73,14 @@ def _word(text: str) -> str:
     return " ".join(text.lower().split()).strip(" .!?,")
 
 
+def is_resume(text: str) -> bool:
+    return _word(text) in _RESUME_WORDS
+
+
+def is_export(text: str) -> bool:
+    return _word(text) in _EXPORT_WORDS
+
+
 @dataclass(frozen=True)
 class Course:
     id: str
@@ -77,6 +95,9 @@ class ProfessorConfig:
     render_dpi: int
     max_history_turns: int
     courses: tuple[Course, ...]
+    allow_groq_followups: bool = False
+    groq_model: str = ""
+    groq_when_gemini_fails: bool = True
 
 
 def load_config(path: Path | None = None) -> ProfessorConfig:
@@ -89,6 +110,9 @@ def load_config(path: Path | None = None) -> ProfessorConfig:
             render_dpi=int(raw["render_dpi"]),
             max_history_turns=int(raw["max_history_turns"]),
             courses=tuple(Course(item["id"], item["name"], item["folder"]) for item in raw["courses"]),
+            allow_groq_followups=raw.get("allow_groq_followups") is True,
+            groq_model=str(raw.get("groq_model", "")),
+            groq_when_gemini_fails=raw.get("groq_when_gemini_fails") is not False,
         )
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise ProfessorSetupError(f"{path.name} could not be read ({type(error).__name__}).") from error
@@ -130,11 +154,27 @@ def find_goal(text: str) -> str:
     return next((goal for word, goal in GOALS.items() if word in lowered), GOALS["learn"])
 
 
+def groq_followups(config: ProfessorConfig):
+    """Off unless the config says otherwise. Slide teaching never comes through here."""
+    return _groq_client(config) if config.allow_groq_followups else None
+
+
+def groq_standby(config: ProfessorConfig):
+    """For questions when Gemini cannot answer. Groq reads text only, so slides stay with Gemini."""
+    return _groq_client(config) if config.groq_when_gemini_fails else None
+
+
+def _groq_client(config: ProfessorConfig):
+    from ..tools.grok import choose_groq_model, groq_client
+
+    return groq_client(picker=(lambda _names: config.groq_model) if config.groq_model else choose_groq_model)
+
+
 class Lesson:
     """The page pointer moves only after Gemini has really answered, so no slide is ever lost."""
 
     def __init__(self, course: Course, system: str, lecture: str, goal: str, slides: list[slide_loader.Slide],
-                 model: ProfessorModel, config: ProfessorConfig):
+                 model: ProfessorModel, config: ProfessorConfig, followups=None, standby=None):
         self.course = course
         self.lecture = lecture
         self.goal = goal
@@ -148,6 +188,44 @@ class Lesson:
         self._model = model
         self._config = config
         self._history: list[tuple[str, str]] = []
+        self._followups = followups
+        self._standby = standby
+        self.summary = ""
+        self.transcript: list[str] = []
+
+    def to_saved(self) -> dict:
+        return {
+            "course_id": self.course.id,
+            "lecture": self.lecture,
+            "goal": self.goal,
+            "files": [str(path) for path in dict.fromkeys(slide.path for slide in self._slides)],
+            "pointer": self.pointer,
+            "total": self.total,
+            "closed": self.closed,
+            "quizzing": self.quizzing,
+            "correct": self.correct,
+            "graded": self.graded,
+            "summary": self.summary,
+            "history": [list(turn) for turn in self._history],
+            "transcript": self.transcript,
+        }
+
+    @classmethod
+    def restored(cls, saved: dict, course: Course, system: str, slides: list[slide_loader.Slide],
+                 model: ProfessorModel, config: ProfessorConfig, followups=None, standby=None) -> "Lesson":
+        """The prompts come fresh from their files, so edits apply to a resumed class too."""
+        if len(slides) != saved["total"]:
+            raise ProfessorSetupError("The slide files have changed since this class was saved.")
+        lesson = cls(course, system, saved["lecture"], saved["goal"], slides, model, config, followups, standby)
+        lesson.pointer = saved["pointer"]
+        lesson.closed = saved.get("closed", False)
+        lesson.quizzing = saved.get("quizzing", False)
+        lesson.correct = saved.get("correct", 0)
+        lesson.graded = saved.get("graded", 0)
+        lesson.summary = saved.get("summary", "")
+        lesson._history = [(role, said) for role, said in saved.get("history", [])]
+        lesson.transcript = list(saved.get("transcript", []))
+        return lesson
 
     @property
     def total(self) -> int:
@@ -157,9 +235,54 @@ class Lesson:
     def finished(self) -> bool:
         return self.pointer >= self.total
 
+    @property
+    def _system_now(self) -> str:
+        return f"{self._system}\n\nEarlier in this class:\n{self.summary}" if self.summary else self._system
+
     def _remember(self, asked: str, answer: str) -> None:
         self._history += [("user", asked), ("model", answer)]
-        self._history = self._history[-2 * self._config.max_history_turns:]
+        if len(self._history) > 2 * self._config.max_history_turns:
+            self._fold_old_turns()
+
+    def _fold_old_turns(self) -> None:
+        """Half the turns become a running summary. If that fails, the class carries on without it."""
+        cut = self._config.max_history_turns // 2 * 2 or 2
+        old, self._history = self._history[:cut], self._history[cut:]
+        words = "\n\n".join(said for _, said in old)
+        try:
+            self.summary = self._model.ask(_SUMMARY_RULE, [], f"{self.summary}\n\n{words}".strip())
+        except TeachingError as error:
+            log.warning("The class summary was not updated: %s", error)
+
+    def _answer(self, asked: str, follow_up: bool) -> str:
+        if follow_up and self._followups is not None and self._followups.connected():
+            try:
+                return f"{self._ask_groq(self._followups, asked)}\n\n*Answered by Groq.*"
+            except ToolRefused as error:
+                log.warning("Groq could not answer, so Gemini will: %s", error)
+        try:
+            return self._model.ask(self._system_now, self._history, asked)
+        except TeachingError as problem:
+            if self._standby is None or not self._standby.connected():
+                raise
+            try:
+                answer = self._ask_groq(self._standby, asked)
+            except ToolRefused as error:
+                log.warning("Groq could not stand in: %s", error)
+                raise problem from error
+            log.info("Groq answered because Gemini could not")
+            return f"{answer}\n\n*Gemini was unavailable, so Groq answered this from the class so far, without seeing the slides.*"
+
+    def _ask_groq(self, client, asked: str) -> str:
+        turns = self._history[-2 * GROQ_TURNS:]
+        words = "\n\n".join(f"{'Student' if role == 'user' else 'Tutor'}: {said}" for role, said in turns)
+        return client.ask(f"{words}\n\nStudent: {asked}"[-LONGEST_GROQ_QUESTION:], self._system_now)
+
+    def _finish(self, asked: str, answer: str) -> renderer.Reply:
+        self._remember(asked, answer)
+        reply = renderer.split(answer)
+        self.transcript.append(reply.screen)
+        return reply
 
     @property
     def needs_closing(self) -> bool:
@@ -171,6 +294,7 @@ class Lesson:
         if word in _NEXT_WORDS:
             self.quizzing = False
             return self.teach_next()
+        self.transcript.append(f"**You:** {text}")
         if word in _QUIZ_WORDS:
             self.quizzing = True
             return self.ask(f"quiz me\n\n{_NO_SCORE}")
@@ -184,22 +308,19 @@ class Lesson:
 
     def _grade(self, answer: str) -> renderer.Reply:
         asked = f"My answer: {answer}\n\n{_GRADE_FORMAT}"
-        reply = self._model.ask(self._system, self._history, asked)
+        reply = self._answer(asked, follow_up=True)
         grades = _RESULT.findall(reply)
         if grades:
             self.graded += 1
             self.correct += grades[-1].lower() == "correct"
         else:
             log.warning("A quiz reply came with no grade, so it was not scored")
-        reply = _RESULT.sub("", reply).strip()
-        self._remember(asked, reply)
-        return renderer.split(reply)
+        return self._finish(asked, _RESULT.sub("", reply).strip())
 
     def _close_lecture(self) -> renderer.Reply:
-        answer = self._model.ask(self._system, self._history, _END_OF_LECTURE)
-        self._remember(_END_OF_LECTURE, answer)
+        answer = self._model.ask(self._system_now, self._history, _END_OF_LECTURE)
         self.closed = True
-        return renderer.split(answer)
+        return self._finish(_END_OF_LECTURE, answer)
 
     def teach_next(self) -> renderer.Reply:
         if self.closed:
@@ -213,17 +334,14 @@ class Lesson:
             f"protocol. The attached pages are slides {first} to {last} in order. Total slides: {self.total}."
         )
         try:
-            answer = self._model.ask(self._system, self._history, instruction, slide_loader.as_files(chosen))
+            answer = self._model.ask(self._system_now, self._history, instruction, slide_loader.as_files(chosen))
         except SlidesRefused:
             log.info("Sending slides %s to %s as pictures instead", first, last)
             pictures = slide_loader.as_pictures(chosen, self._config.render_dpi)
-            answer = self._model.ask(self._system, self._history, instruction, pictures)
-        self._remember(instruction, answer)
+            answer = self._model.ask(self._system_now, self._history, instruction, pictures)
         self.pointer = last
-        return renderer.split(answer)
+        return self._finish(instruction, answer)
 
     def ask(self, text: str) -> renderer.Reply:
         """Words only. The slides already taught are in the history, and the pointer stays put."""
-        answer = self._model.ask(self._system, self._history, text)
-        self._remember(text, answer)
-        return renderer.split(answer)
+        return self._finish(text, self._answer(text, follow_up=_word(text) in _FOLLOW_UP_WORDS))

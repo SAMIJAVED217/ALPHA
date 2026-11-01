@@ -4,17 +4,19 @@ import gc
 import json
 import re
 import threading
+from datetime import date
 
 import pytest
 from pypdf import PdfWriter
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, Signal
 from PySide6.QtWidgets import QFileDialog
 
-from alpha.professor import llm_router, math_render, renderer, slide_loader
+from alpha.professor import llm_router, math_render, renderer, session_store, slide_loader
 from alpha.professor import professor_mode as professor
 from alpha.professor.llm_router import ProfessorModel, SlidesRefused, TeachingError
 from alpha.professor.professor_mode import Course, Lesson, ProfessorConfig, ProfessorSetupError
 from alpha.professor.slide_loader import Slide, SlideError
+from alpha.tools.registry import ToolRefused
 from alpha.ui.professor_window import ProfessorWindow
 
 from .test_interface import spin_until as wait_briefly
@@ -232,7 +234,7 @@ def test_old_turns_are_trimmed(tmp_path):
     lesson = lesson_of(tmp_path, gemini)
     for number in range(15):
         lesson.ask(f"question {number}")
-    assert len(gemini.calls[-1][1]) == 21
+    assert len(lesson._history) <= 20 and lesson.summary
 
 
 # Acceptance test 6: a rate limit is shown, retried, and never moves to another model.
@@ -242,8 +244,8 @@ def test_a_rate_limit_shows_a_message_and_tries_again(tmp_path):
     gemini, waits, slept = Gemini([Failure(429), Failure(429)]), [], []
     assert model_with(gemini, waits, slept).ask("s", [], "hello")
     assert len(gemini.calls) == 3 and all(call[0] == "test-model" for call in gemini.calls)
-    assert len(waits) == 2 and "busy" in waits[0]
-    assert slept == [4.0, 8.0]
+    assert waits[0] == "Gemini is busy. Trying again in 4 seconds (try 2 of 3)."
+    assert sum(slept) == 12
 
 
 def test_after_three_tries_it_stops_and_says_so(tmp_path):
@@ -500,6 +502,353 @@ def test_the_score_shows_during_a_quiz(room, monkeypatch):
     assert not window.score.isHidden() and window.score.text() == "Quiz score: 0 / 0"
 
 
+# Saving, resuming and exporting.
+
+
+def test_a_class_comes_back_exactly_where_it_was(tmp_path):
+    gemini = Marker(["correct"])
+    lesson = lesson_of(tmp_path, gemini)
+    lesson.teach_next()
+    lesson.respond("quiz me")
+    lesson.respond("b")
+    folder = tmp_path / "sessions"
+    session_store.save(lesson, folder)
+    saved = session_store.saved_classes(folder)[0]
+    assert saved.label == "Week 9 (slide 6 of 30)"
+    slides = slide_loader.load(saved.data["files"])
+    back = Lesson.restored(saved.data, COURSES[0], "NEW SYSTEM", slides, model_with(gemini), config())
+    assert (back.pointer, back.correct, back.graded, back.quizzing) == (6, 1, 1, True)
+    assert back.transcript == lesson.transcript
+    back.respond("next")
+    assert "slides 7–12" in gemini.calls[-1][1][-1]["parts"][-1]["text"]
+    assert gemini.calls[-1][2]["system_instruction"] == "NEW SYSTEM"
+
+
+def test_changed_slides_are_refused(tmp_path):
+    lesson = lesson_of(tmp_path, Gemini(), pages=8)
+    data = lesson.to_saved()
+    with pytest.raises(ProfessorSetupError, match="changed"):
+        Lesson.restored(data, COURSES[0], "s", [], model_with(Gemini()), config())
+
+
+def test_no_key_is_ever_saved(tmp_path):
+    lesson = lesson_of(tmp_path, Gemini())
+    lesson.teach_next()
+    assert "a-key" not in session_store.save(lesson, tmp_path / "s").read_text(encoding="utf-8")
+
+
+def test_a_damaged_save_is_skipped(tmp_path):
+    (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "other.json").write_text("{}", encoding="utf-8")
+    assert session_store.saved_classes(tmp_path) == []
+
+
+def test_no_sessions_folder_means_no_saved_classes(tmp_path):
+    assert session_store.saved_classes(tmp_path / "nowhere") == []
+
+
+def test_saving_again_replaces_the_same_class(tmp_path):
+    lesson = lesson_of(tmp_path, Gemini())
+    folder = tmp_path / "s"
+    session_store.save(lesson, folder)
+    lesson.teach_next()
+    session_store.save(lesson, folder)
+    assert len(list(folder.glob("*"))) == 1
+
+
+def exportable(tmp_path):
+    folder = tmp_path / "course"
+    folder.mkdir()
+    slides = slide_loader.load([pdf_of(tmp_path / "lecture.pdf", 6)])
+    course = Course("cad", "Materials, Parts & Tools", str(folder))
+    lesson = Lesson(course, "s", "Week 9: etching?", "exam prep", slides, model_with(Gemini()), config())
+    lesson.teach_next()
+    return lesson, folder
+
+
+def test_export_makes_a_markdown_file_named_as_asked(tmp_path):
+    lesson, folder = exportable(tmp_path)
+    path = session_store.export_notes(lesson, date(2026, 11, 2))
+    assert path.parent == folder
+    assert path.name == "[ALPHA Notes] Materials, Parts & Tools - Week 9 etching - 2026-11-02.md"
+    written = path.read_text(encoding="utf-8")
+    assert "### Slide" in written and "$E = mc^2$" in written and written.startswith("# Materials")
+
+
+def test_export_never_replaces_an_earlier_file(tmp_path):
+    lesson, _ = exportable(tmp_path)
+    first = session_store.export_notes(lesson, date(2026, 11, 2))
+    second = session_store.export_notes(lesson, date(2026, 11, 2))
+    assert first != second and second.name.endswith(" (2).md") and first.exists()
+
+
+def test_export_with_no_folder_is_refused(tmp_path):
+    lesson, folder = exportable(tmp_path)
+    lesson.course = Course("cad", "x", str(tmp_path / "missing"))
+    with pytest.raises(ProfessorSetupError, match="folder"):
+        session_store.export_notes(lesson)
+
+
+def test_nothing_is_exported_without_being_asked(room, tmp_path):
+    window, _, _ = room
+    teaching(window)
+    assert not list(tmp_path.glob("**/[[]ALPHA Notes*"))
+
+
+def test_a_class_saves_itself_and_can_be_resumed_by_voice(room, tmp_path):
+    window, conversation, gemini = room
+    teaching(window)
+    window.end_class()
+    window.start_class()
+    assert window._saved
+    window.handle("resume class")
+    assert window._lesson is not None and window._lesson.pointer == 6
+    assert spin_until(lambda: "Welcome back" in conversation.spoken[-1])
+    assert "6 of 8" in window.status.text()
+
+
+def test_resuming_with_nothing_saved_says_so(room):
+    window, conversation, _ = room
+    window.start_class()
+    window.handle("resume class")
+    assert "no saved class" in conversation.spoken[-1]
+
+
+def test_a_moved_slide_file_is_reported_on_resume(room, tmp_path):
+    window, conversation, _ = room
+    teaching(window)
+    window.end_class()
+    (tmp_path / "lecture.pdf").unlink()
+    window.start_class()
+    window.handle("resume")
+    assert "could not be resumed" in conversation.spoken[-1]
+
+
+def test_the_export_button_reports_where_the_notes_went(room, tmp_path):
+    window, _, _ = room
+    teaching(window)
+    window._lesson.course = Course("cad", "CAD", str(tmp_path))
+    window.controls["Export"].click()
+    assert "Notes saved as [ALPHA Notes] CAD" in window.status.text()
+
+
+def test_resume_and_export_words():
+    assert professor.is_enter("resume class") and professor.is_resume("Resume class.")
+    assert professor.is_export("export notes") and not professor.is_export("export the data")
+
+
+# Running summary.
+
+
+def test_older_turns_become_a_summary_that_reaches_gemini(tmp_path):
+    gemini = Gemini()
+    lesson = lesson_of(tmp_path, gemini)
+    for number in range(12):
+        lesson.ask(f"question {number}")
+    assert any("Summarise" in str(call[2]) for call in gemini.calls)
+    assert "Earlier in this class" in gemini.calls[-1][2]["system_instruction"]
+
+
+def test_a_failed_summary_does_not_stop_the_class(tmp_path):
+    class NoSummary(Gemini):
+        def generate_content(self, model, contents, config):
+            if "Summarise" in config["system_instruction"]:
+                raise Failure(403)
+            return super().generate_content(model, contents, config)
+
+    lesson = lesson_of(tmp_path, NoSummary())
+    for number in range(12):
+        assert lesson.ask(f"question {number}").screen
+    assert lesson.summary == "" and len(lesson._history) <= 20
+
+
+# Groq, which is off unless switched on and never teaches slides.
+
+
+class Groq:
+    def __init__(self, ready=True, error=None):
+        self.ready, self.error = ready, error
+        self.asked = []
+
+    def connected(self):
+        return self.ready
+
+    def ask(self, question, instruction=""):
+        self.asked.append((question, instruction))
+        if self.error:
+            raise self.error
+        return "From Groq.\nThe details.\nRESULT: correct"
+
+
+def groq_lesson(tmp_path, groq, gemini=None):
+    slides = slide_loader.load([pdf_of(tmp_path / "lecture.pdf", 12)])
+    gemini = gemini or Gemini()
+    return Lesson(COURSES[0], "SYSTEM", "Week 9", "exam", slides, model_with(gemini), config(), groq), gemini
+
+
+def test_groq_is_off_unless_the_config_turns_it_on(config_file):
+    assert professor.groq_followups(professor.load_config(config_file)) is None
+    raw = json.loads(config_file.read_text(encoding="utf-8"))
+    raw.update(allow_groq_followups=True, groq_model="some-model")
+    config_file.write_text(json.dumps(raw), encoding="utf-8")
+    assert professor.groq_followups(professor.load_config(config_file)).name == "Groq"
+
+
+def test_only_a_true_flag_turns_it_on(config_file):
+    raw = json.loads(config_file.read_text(encoding="utf-8"))
+    raw["allow_groq_followups"] = "yes"
+    config_file.write_text(json.dumps(raw), encoding="utf-8")
+    assert professor.load_config(config_file).allow_groq_followups is False
+
+
+@pytest.mark.parametrize("word", ["simpler", "deeper", "Why?"])
+def test_groq_answers_allowed_follow_ups_and_is_named(tmp_path, word):
+    groq = Groq()
+    lesson, gemini = groq_lesson(tmp_path, groq)
+    calls = len(gemini.calls)
+    reply = lesson.respond(word)
+    assert groq.asked and len(gemini.calls) == calls
+    assert "Answered by Groq" in reply.screen
+
+
+def test_groq_can_grade_a_typed_answer(tmp_path):
+    groq = Groq()
+    lesson, _ = groq_lesson(tmp_path, groq)
+    lesson.quizzing = True
+    lesson.respond("b")
+    assert (lesson.correct, lesson.graded) == (1, 1)
+
+
+def test_groq_never_teaches_slides_or_closes_a_lecture(tmp_path):
+    groq = Groq()
+    lesson, gemini = groq_lesson(tmp_path, groq)
+    while not lesson.closed:
+        lesson.teach_next()
+    assert groq.asked == []
+
+
+@pytest.mark.parametrize("words", ["example", "summary", "what does this mean", "quiz me"])
+def test_other_requests_stay_with_gemini(tmp_path, words):
+    groq = Groq()
+    lesson, _ = groq_lesson(tmp_path, groq)
+    lesson.respond(words)
+    assert groq.asked == []
+
+
+def test_a_failing_groq_falls_back_to_gemini_for_a_follow_up(tmp_path):
+    lesson, gemini = groq_lesson(tmp_path, Groq(error=ToolRefused("Groq says the usage limit")))
+    assert "Groq" not in lesson.respond("simpler").screen
+    assert gemini.calls
+
+
+def test_with_no_groq_key_gemini_answers(tmp_path):
+    groq = Groq(ready=False)
+    lesson, gemini = groq_lesson(tmp_path, groq)
+    lesson.respond("simpler")
+    assert groq.asked == [] and gemini.calls
+
+
+# Groq as the backup when Gemini cannot answer.
+
+
+def standby_lesson(tmp_path, standby, gemini):
+    slides = slide_loader.load([pdf_of(tmp_path / "lecture.pdf", 12)])
+    return Lesson(COURSES[0], "SYSTEM", "Week 9", "exam", slides, model_with(gemini), config(), None, standby)
+
+
+def test_groq_answers_a_question_when_gemini_cannot_and_says_so(tmp_path):
+    standby = Groq()
+    lesson = standby_lesson(tmp_path, standby, Gemini([Failure(403)]))
+    reply = lesson.respond("what is annealing")
+    assert standby.asked and "Gemini was unavailable" in reply.screen and "without seeing the slides" in reply.screen
+
+
+def test_groq_never_stands_in_for_slides_and_the_place_is_kept(tmp_path):
+    standby = Groq()
+    lesson = standby_lesson(tmp_path, standby, Gemini([Failure(403)]))
+    with pytest.raises(TeachingError):
+        lesson.teach_next()
+    assert standby.asked == [] and lesson.pointer == 0
+
+
+def test_groq_can_mark_a_quiz_answer_when_gemini_cannot(tmp_path):
+    lesson = standby_lesson(tmp_path, Groq(), Gemini([Failure(403)]))
+    lesson.quizzing = True
+    lesson.respond("b")
+    assert (lesson.correct, lesson.graded) == (1, 1)
+
+
+def test_with_no_groq_key_the_gemini_problem_is_shown(tmp_path):
+    lesson = standby_lesson(tmp_path, Groq(ready=False), Gemini([Failure(403)]))
+    with pytest.raises(TeachingError, match="could not answer"):
+        lesson.respond("what is annealing")
+
+
+def test_when_groq_fails_too_the_gemini_problem_is_shown(tmp_path):
+    lesson = standby_lesson(tmp_path, Groq(error=ToolRefused("no")), Gemini([Failure(403)]))
+    with pytest.raises(TeachingError, match="could not answer"):
+        lesson.respond("what is annealing")
+
+
+def test_the_backup_can_be_switched_off(config_file):
+    assert professor.groq_standby(professor.load_config(config_file)) is not None
+    raw = json.loads(config_file.read_text(encoding="utf-8"))
+    raw["groq_when_gemini_fails"] = False
+    config_file.write_text(json.dumps(raw), encoding="utf-8")
+    assert professor.groq_standby(professor.load_config(config_file)) is None
+
+
+# Rate limits.
+
+
+def test_daily_wording_is_retried_because_it_also_appears_on_short_limits():
+    class Daily(Failure):
+        def __str__(self):
+            return "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+
+    gemini = Gemini([Daily(429)])
+    assert model_with(gemini).ask("s", [], "hello")
+    assert len(gemini.calls) == 2
+
+
+def test_only_after_every_try_does_it_say_the_limit_may_be_reached():
+    class Daily(Failure):
+        def __str__(self):
+            return "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+
+    gemini = Gemini([Daily(429), Daily(429), Daily(429)])
+    with pytest.raises(TeachingError, match="may be used up"):
+        model_with(gemini).ask("s", [], "hello")
+    assert len(gemini.calls) == 3
+
+
+def test_the_wait_gemini_asks_for_is_respected():
+    class Asked(Failure):
+        def __str__(self):
+            return "429 Please retry in 23.5s."
+
+    slept = []
+    model_with(Gemini([Asked(429)]), slept=slept).ask("s", [], "hello")
+    assert sum(slept) == 24
+
+
+def test_a_very_long_wait_is_capped():
+    class Long(Failure):
+        def __str__(self):
+            return "429 retryDelay: 900s"
+
+    slept = []
+    model_with(Gemini([Long(429)]), slept=slept).ask("s", [], "hello")
+    assert sum(slept) == 60
+
+
+def test_the_message_counts_down(tmp_path):
+    waits = []
+    model_with(Gemini([Failure(429)]), waits).ask("s", [], "hello")
+    assert [message.split(" in ")[1].split()[0] for message in waits] == ["4", "3", "2", "1"]
+    assert "1 second (" in waits[-1]
+
+
 # Words.
 
 
@@ -587,7 +936,7 @@ def room(qapp, prompts, config_file, tmp_path, monkeypatch):
     monkeypatch.setattr(QFileDialog, "getOpenFileNames", lambda *a: ([str(pdf)], ""))
     conversation = FakeConversation()
     window = ProfessorWindow(
-        conversation, config_path=config_file, prompts=prompts,
+        conversation, config_path=config_file, prompts=prompts, sessions=tmp_path / "sessions",
         make_model=lambda name, on_wait: model_with(gemini, []),
     )
     yield window, conversation, gemini

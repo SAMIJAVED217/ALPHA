@@ -62,6 +62,7 @@ class Proposal:
     detail: str = ""
     file_name: str = ""
     target: Path | None = None
+    owner_only: bool = False  # Saying confirm is not enough. It takes the keyword, or the button at the PC.
 
     @property
     def succeeded(self) -> bool:
@@ -120,8 +121,8 @@ class ActionGate:
         self._lock = threading.Lock()
         self._current: Proposal | None = None
 
-    def propose(self, summary: str, where: str, preview: str, perform: Callable[[], str]) -> Proposal:
-        return self._hold(Proposal(uuid.uuid4().hex, summary, where, preview, perform, 0.0))
+    def propose(self, summary: str, where: str, preview: str, perform: Callable[[], str], owner_only: bool = False) -> Proposal:
+        return self._hold(Proposal(uuid.uuid4().hex, summary, where, preview, perform, 0.0, owner_only=owner_only))
 
     def propose_create_file(self, file_name: str, content: str) -> Proposal:
         return self._hold(self._file_proposal(file_name, content))

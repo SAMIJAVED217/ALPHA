@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -84,7 +85,7 @@ class WakeProcess:
     """
 
     def __init__(self, model_dir: Path, on_ready: Callable[[], None], on_wake: Callable[[], None],
-                 on_exit: Callable[[], None]):
+                 on_exit: Callable[[], None], keyword: str = ""):
         self._on_ready = on_ready
         self._on_wake = on_wake
         self._on_exit = on_exit
@@ -99,6 +100,7 @@ class WakeProcess:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             creationflags=_NO_WINDOW,
+            env={**os.environ, "ALPHA_OWNER_KEYWORD": keyword},  # Not in the command line, where it would show.
         )
         threading.Thread(target=self._write, name="alpha-wake-writer", daemon=True).start()
         threading.Thread(target=self._read, name="alpha-wake-reader", daemon=True).start()
@@ -128,8 +130,10 @@ class WakeProcess:
                 self._on_ready()
             elif event == "wake":
                 self._on_wake()
-            elif event in ("confirm", "cancel") and self.on_decision is not None:
+            elif event in ("confirm", "cancel", "keyword") and self.on_decision is not None:
                 self.on_decision(event)
+            elif event == "keyword_unknown" and self.on_decision is not None:
+                self.on_decision("unknown")
         if not self._stopping:
             log.warning("The wake word listener stopped unexpectedly.")
             self._on_exit()

@@ -107,7 +107,7 @@ def test_starting_opens_the_mic_and_a_session_for_that_language(rig):
     r = rig()
     r.start("ur")
     assert r.targets == ["ur"]
-    assert r.conversation.interpreting and r.changes == ["ur"]
+    assert wait_until(lambda: r.conversation.interpreting and r.changes == ["ur"])
     assert wait_until(lambda: r.states[-1] is State.LISTENING)
 
 

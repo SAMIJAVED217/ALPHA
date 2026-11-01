@@ -21,7 +21,7 @@ from PySide6.QtCore import QObject, Signal
 
 from datetime import datetime
 
-from .. import keystore, languages, profile
+from .. import keystore, languages, lessons, profile
 from ..characters import CHARACTERS
 from ..attachments import Attachment
 from ..actions import ActionGate, HumanPress, Proposal, ProposalRefused
@@ -32,7 +32,7 @@ from ..audio.speaker import Speaker
 from ..settings import Settings
 from ..memory import MemoryStore
 from ..state import State
-from ..professor.professor_mode import is_enter, is_for_aplha
+from ..professor.professor_mode import is_enter, is_for_aplha, is_resume
 from ..tools import catalogue
 from ..tools.computer import skip_ad
 from ..tools.registry import ToolBox, ToolRefused
@@ -129,6 +129,7 @@ class Conversation(QObject):
     class_message = Signal(str)
     interpreter_requested = Signal(str)
     reader_requested = Signal(str, str)
+    aplha_command = Signal(str)
     speech_finished = Signal()
     reading_interrupted = Signal()
     interpreting_changed = Signal(str)
@@ -191,7 +192,7 @@ class Conversation(QObject):
         self._reading = False
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
-            lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone)
+            lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone, self._owner_keyword())
         )
         self._wake_model_ready = wake_model_ready
         self._speech_factory = speech_factory or self._real_speech
@@ -236,7 +237,8 @@ class Conversation(QObject):
 
     async def _connect_gemini(self, key: str, model: str) -> LiveSession:
         settings = self._settings
-        return await gemini.connect(key, model, settings.character, settings.speech_language, profile.for_the_model())
+        about = "\n\n".join(filter(None, (profile.for_the_model(), lessons.for_the_model())))
+        return await gemini.connect(key, model, settings.character, settings.speech_language, about)
 
     def _real_speech(self, language, on_text, on_sound, on_idle, on_exit):
         return (
@@ -441,6 +443,8 @@ class Conversation(QObject):
             self.class_message.emit(text)
         elif not self._in_class and is_enter(text):
             self.class_requested.emit()
+            if is_resume(text):
+                self.class_message.emit(text)
         else:
             return False
         self._unanswered = ""
@@ -924,20 +928,32 @@ class Conversation(QObject):
         if self._mode in (Mode.WAITING, Mode.REPLYING, Mode.FOLLOW_UP) and self._gate.current is None:
             self._start_hands_free_turn()
 
+    @staticmethod
+    def _owner_keyword() -> str:
+        try:
+            return keystore.load_secret(keystore.KEYWORD_ACCOUNT)
+        except keystore.KeyStoreError:
+            return ""
+
     def _heard_decision(self, word: str) -> None:
         """Comes only from the local listener on the microphone, so nothing the model writes can reach
         it. The pause after speaking keeps APLHA's own voice from counting."""
+        if word == "unknown":
+            self.notice.emit("The listener cannot hear your keyword. Choose common English words.")
+            return
         proposal = self._gate.current
         if proposal is None or self._playing or self._loop.time() < self._own_voice_gone_at:
             return
         if not self._someone_spoke():
             log.info("Ignored a decision word with no clear speech behind it")
             return
-        log.info("Heard '%s' for the waiting action", word)
-        if word == "confirm":
+        log.info("Heard a decision for the waiting action")
+        if word == "cancel":
+            self._cancel(proposal.id)
+        elif word == "keyword" or not (proposal.owner_only and self._owner_keyword()):
             self._confirm(HumanPress(proposal.id))
         else:
-            self._cancel(proposal.id)
+            self.notice.emit("This one needs your keyword, or the button on this PC.")
 
     def _someone_spoke(self) -> bool:
         clear = sum(self._tracker.is_clear_speech(level_of(chunk)) for chunk in self._lead_in)
@@ -1274,7 +1290,7 @@ class Conversation(QObject):
                 if not tool.always_asks:
                     self._hop(self._tool_finished, request, {"ok": True, "completed": True, "detail": plan.perform()})
                     return
-                proposal = self._gate.propose(plan.summary, plan.where, plan.preview, plan.perform)
+                proposal = self._gate.propose(plan.summary, plan.where, plan.preview, plan.perform, tool.owner_only)
             else:
                 self._hop(self._tool_finished, request, tool.run(arguments))
                 return
@@ -1306,6 +1322,10 @@ class Conversation(QObject):
             self._loop.call_later(QUIT_DELAY_SECONDS, self.quit_requested.emit)
         if request.name == catalogue.CLASS_TOOL:
             self.class_requested.emit()
+            if result.get("resume"):
+                self.class_message.emit("resume class")
+        if request.name == catalogue.CONTROL_TOOL and result.get("ok"):
+            self.aplha_command.emit(result["action"])
         if request.name == catalogue.READER_TOOL and result.get("ok"):
             self.reader_requested.emit(result["target"], result["source"])
         if request.name == catalogue.INTERPRET_TOOL and result.get("ok"):

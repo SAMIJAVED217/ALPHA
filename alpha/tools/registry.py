@@ -38,6 +38,7 @@ class Tool:
     run: Callable[[dict], dict] | None = None
     propose: Callable[[dict], Plan] | None = None
     always_asks: bool = False
+    owner_only: bool = False
 
     @property
     def needs_confirmation(self) -> bool:
