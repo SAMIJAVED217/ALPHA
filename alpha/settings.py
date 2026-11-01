@@ -38,6 +38,7 @@ class Settings:
     character: str = DEFAULT_CHARACTER
     hands_free_at_start: bool = True
     morning_briefing: bool = True
+    skip_ads: bool = True
     last_briefing: str = ""
     colours: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_COLOURS))
 
@@ -56,7 +57,7 @@ def _clean(raw: dict) -> Settings:
         settings.model = DEFAULT_MODEL
     if raw.get("speech_engine") in SPEECH_ENGINES:
         settings.speech_engine = raw["speech_engine"]
-    for name in ("hands_free_at_start", "morning_briefing"):
+    for name in ("hands_free_at_start", "morning_briefing", "skip_ads"):
         if isinstance(raw.get(name), bool):
             setattr(settings, name, raw[name])
     if isinstance(raw.get("last_briefing"), str):

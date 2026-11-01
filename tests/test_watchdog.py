@@ -123,7 +123,7 @@ def test_the_tools_add_list_and_stop():
 def test_no_watch_tool_returns_page_text_to_the_model():
     box = build_toolbox(None)
     for name in ("watch_page", "list_watches", "stop_watching"):
-        assert not box.get(name).needs_confirmation and not box.get(name).reads_outside
+        assert not box.get(name).needs_confirmation
 
 
 def test_a_match_reaches_the_owner_in_the_log_and_never_the_model(hud):  # noqa: F811

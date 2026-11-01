@@ -1,6 +1,7 @@
-"""Asking Grok, through xAI's API with a key kept in the Credential Manager.
+"""The second AI: Grok through xAI, or free models through Groq, a different company.
 
-Grok helps Gemini with harder thinking, and stands in for a typed message when Gemini
+Keys are kept in the Credential Manager, and xAI is used when both are saved. The second
+AI helps Gemini with harder thinking, and stands in for a typed message when Gemini
 cannot answer. It has no tools, so it can never act on the computer.
 """
 
@@ -17,6 +18,8 @@ KEY_ACCOUNT = "xai-key"
 ROOT = "https://api.x.ai/v1"
 API = f"{ROOT}/chat/completions"
 MODELS = f"{ROOT}/models"
+GROQ_KEY_ACCOUNT = "groq-key"
+GROQ_ROOT = "https://api.groq.com/openai/v1"
 LONGEST_QUESTION = 8_000
 LONGEST_ANSWER = 8_000
 STAND_IN = (
@@ -44,10 +47,25 @@ def choose_model(names: list[str]) -> str:
     return max(usable, key=rank)
 
 
+_GROQ_NOT_FOR_CHAT = re.compile(r"whisper|tts|guard|embed|orpheus|playai|compound", re.IGNORECASE)
+
+
+def choose_groq_model(names: list[str]) -> str:
+    """Groq's general chat models are named 'versatile'. Its list changes too, so none is fixed here."""
+    usable = [name for name in names if not _GROQ_NOT_FOR_CHAT.search(name)]
+    if not usable:
+        raise ToolRefused("Groq did not offer a chat model to this key.")
+    return max(usable, key=lambda name: ("versatile" in name, name))
+
+
 class GrokClient:
-    def __init__(self, load_key=lambda: keystore.load_secret(KEY_ACCOUNT), transport=None):
+    def __init__(self, load_key=lambda: keystore.load_secret(KEY_ACCOUNT), transport=None,
+                 root=ROOT, name="Grok", picker=choose_model):
         self._load_key = load_key
         self._transport = transport
+        self._root = root
+        self.name = name
+        self._picker = picker
         self._model = ""
 
     def connected(self) -> bool:
@@ -60,31 +78,33 @@ class GrokClient:
         try:
             response = client.request(method, address, headers={"Authorization": f"Bearer {key}"}, json=body)
         except httpx.HTTPError as error:
-            raise ToolRefused(f"Grok could not be reached ({type(error).__name__}).") from error
+            raise ToolRefused(f"{self.name} could not be reached ({type(error).__name__}).") from error
         if response.status_code >= 400 and "credit" in response.text.lower():
-            raise ToolRefused("xAI says this account has no credits left.")
+            raise ToolRefused(f"{self.name} says this account has no credits left.")
         if response.status_code in (401, 403):
-            raise ToolRefused("xAI refused the key. Check it under Settings, Connections.")
+            raise ToolRefused(f"{self.name} refused the key. Check it under Settings, Connections.")
+        if response.status_code == 429:
+            raise ToolRefused(f"{self.name} says the usage limit has been reached. Try again later.")
         if response.status_code >= 400:
             if response.status_code in (400, 404):
                 self._model = ""
-            raise ToolRefused(f"xAI answered with error {response.status_code}.")
+            raise ToolRefused(f"{self.name} answered with error {response.status_code}.")
         try:
             return response.json()
         except ValueError as error:
-            raise ToolRefused("xAI sent back something unexpected.") from error
+            raise ToolRefused(f"{self.name} sent back something unexpected.") from error
 
     def _saved_key(self) -> str:
         key = self._load_key()
         if not key:
-            raise ToolRefused("Grok is not connected yet. Add an xAI key under Settings, Connections.")
+            raise ToolRefused(f"{self.name} is not connected yet. Add its key under Settings, Connections.")
         return key
 
     def _pick_model(self, client: httpx.Client, key: str) -> None:
         if not self._model:
-            listed = self._exchange(client, key, "GET", MODELS)
+            listed = self._exchange(client, key, "GET", f"{self._root}/models")
             offered = listed.get("data") if isinstance(listed, dict) else None
-            self._model = choose_model([item.get("id", "") for item in offered or [] if isinstance(item, dict)])
+            self._model = self._picker([item.get("id", "") for item in offered or [] if isinstance(item, dict)])
 
     def check(self) -> None:
         """Proves the key works and that a chat model is available. Spends no credits."""
@@ -98,29 +118,58 @@ class GrokClient:
         messages.append({"role": "user", "content": question})
         with httpx.Client(transport=self._transport, timeout=60) as client:
             self._pick_model(client, key)
-            answer = self._exchange(client, key, "POST", API, {"model": self._model, "messages": messages})
+            answer = self._exchange(
+                client, key, "POST", f"{self._root}/chat/completions", {"model": self._model, "messages": messages}
+            )
         try:
             return answer["choices"][0]["message"]["content"]
         except (LookupError, TypeError) as error:
-            raise ToolRefused("xAI sent back something unexpected.") from error
+            raise ToolRefused(f"{self.name} sent back something unexpected.") from error
 
     def stand_in(self, question: str) -> str:
         return self.ask(question[:LONGEST_QUESTION], STAND_IN)[:LONGEST_ANSWER]
 
 
-def grok_tools(client: GrokClient | None) -> list[Tool]:
+def groq_client(load_key=lambda: keystore.load_secret(GROQ_KEY_ACCOUNT), transport=None) -> GrokClient:
+    return GrokClient(load_key, transport, GROQ_ROOT, "Groq", choose_groq_model)
+
+
+class SecondAI:
+    """Uses xAI when its key is saved, otherwise Groq."""
+
+    def __init__(self, xai: GrokClient | None = None, groq: GrokClient | None = None):
+        self._xai = xai or GrokClient()
+        self._groq = groq or groq_client()
+
+    def _chosen(self) -> GrokClient:
+        return self._xai if self._xai.connected() else self._groq
+
+    @property
+    def name(self) -> str:
+        return self._chosen().name
+
+    def connected(self) -> bool:
+        return self._chosen().connected()
+
+    def ask(self, question: str, instruction: str = "") -> str:
+        return self._chosen().ask(question, instruction)
+
+    def stand_in(self, question: str) -> str:
+        return self._chosen().stand_in(question)
+
+
+def grok_tools(client) -> list[Tool]:
     def ask(arguments):
         answer = client.ask(text(arguments, "question", LONGEST_QUESTION))
-        return {"ok": True, "answer": answer[:LONGEST_ANSWER], "detail": "Grok answered."}
+        return {"ok": True, "answer": answer[:LONGEST_ANSWER], "from": client.name, "detail": f"{client.name} answered."}
 
     return [
         Tool(
             "ask_grok",
-            "Send a question to Grok for harder thinking, or when the owner asks for Grok. "
-            "The question leaves this computer for xAI.",
+            "Send a question to the second AI for harder thinking, or when the owner asks for it. That is Grok "
+            "from xAI, or Groq's free models if only Groq is connected. The question leaves this computer.",
             {"question": (STRING, "The full question, with no private details the owner did not ask to share.")},
             ("question",),
             run=ask,
-            reads_outside=True,
         ),
     ]

@@ -148,13 +148,11 @@ def everyday_tools(book: ReminderBook, web: WebInfo, computer, clock=datetime.no
             "Read current news headlines, on a topic if given.",
             {"topic": (STRING, "Optional subject.")},
             run=get_news,
-            reads_outside=True,
         ),
         Tool(
             "read_clipboard",
             "Read the text on the clipboard, only when the owner asks. It may then be translated, summarised or fixed.",
             run=read_clipboard,
-            reads_outside=True,
         ),
         Tool("write_clipboard", "Put text on the clipboard.", {"text": (STRING, "The text.")}, ("text",), run=write_clipboard),
     ]

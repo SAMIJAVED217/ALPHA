@@ -115,6 +115,64 @@ def rig(qapp):
         item.close()
 
 
+def waiting_action(r):
+    r.turn_on()
+    r.conversation.propose_file("a.txt", "x")
+    assert wait_until(lambda: r.conversation._gate.current is not None)
+    return r.conversation._gate.current
+
+
+def test_saying_confirm_carries_out_the_waiting_action(rig):
+    r = rig()
+    proposal = waiting_action(r)
+    r.sound(times=4)
+    r.wake.on_decision("confirm")
+    assert wait_until(lambda: r.conversation._gate.current is None)
+    assert proposal.target.exists()
+
+
+def test_saying_cancel_drops_the_waiting_action(rig):
+    r = rig()
+    proposal = waiting_action(r)
+    r.sound(times=4)
+    r.wake.on_decision("cancel")
+    assert wait_until(lambda: r.conversation._gate.current is None)
+    assert not proposal.target.exists()
+
+
+def test_a_decision_word_in_quiet_noise_is_ignored(rig):
+    r = rig()
+    proposal = waiting_action(r)
+    r.wake.on_decision("confirm")
+    r.hub.submit(lambda b: None).result(2)
+    assert r.conversation._gate.current is proposal
+
+
+def test_aplhas_own_voice_cannot_confirm(rig):
+    r = rig()
+    proposal = waiting_action(r)
+    r.sound(times=4)
+    r.conversation._own_voice_gone_at = r.conversation._loop.time() + 60
+    r.wake.on_decision("confirm")
+    r.hub.submit(lambda b: None).result(2)
+    assert r.conversation._gate.current is proposal
+
+
+def test_a_decision_word_with_nothing_waiting_does_nothing(rig):
+    r = rig()
+    r.turn_on()
+    r.sound(times=4)
+    r.wake.on_decision("confirm")
+    assert r.conversation._gate.current is None
+
+
+def test_talking_while_an_action_waits_does_not_start_a_turn(rig):
+    r = rig()
+    waiting_action(r)
+    r.sound(times=12)
+    assert r.mode is Mode.WAITING
+
+
 def test_off_by_default_and_mic_closed(rig):
     r = rig()
     assert r.mode is Mode.OFF

@@ -119,11 +119,11 @@ def notion_tools(client: NotionClient) -> list[Tool]:
     page = {"page_id": (STRING, "The page id, from notion_search.")}
     return [
         Tool("notion_search", "Search the owner's shared Notion pages by title.",
-             {"query": (STRING, "Words to look for.")}, ("query",), run=search, reads_outside=True),
-        Tool("notion_read", "Read the text of a Notion page.", page, ("page_id",), run=read, reads_outside=True),
+             {"query": (STRING, "Words to look for.")}, ("query",), run=search),
+        Tool("notion_read", "Read the text of a Notion page.", page, ("page_id",), run=read),
         Tool("propose_notion_add", "Add text to a Notion page.",
-             {**page, "text": (STRING, "The text to add.")}, ("page_id", "text"), propose=plan_add, quick=True),
+             {**page, "text": (STRING, "The text to add.")}, ("page_id", "text"), propose=plan_add),
         Tool("propose_notion_create", "Create a Notion page inside another page.",
              {**page, "title": (STRING, "The new page's title."), "text": (STRING, "Its text.")},
-             ("page_id", "title", "text"), propose=plan_create, quick=True),
+             ("page_id", "title", "text"), propose=plan_create),
     ]

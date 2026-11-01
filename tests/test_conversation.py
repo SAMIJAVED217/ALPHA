@@ -22,6 +22,8 @@ from .test_interface import spin_until as wait_until
 
 
 class Standby:
+    name = "Grok"
+
     def __init__(self, answer="From Grok", ready=True, error=None):
         self.answer, self.ready, self.error = answer, ready, error
         self.asked = []
@@ -323,66 +325,6 @@ def test_the_model_cannot_call_anything_else(rig, name):
     assert wait_until(lambda: len(r.session.sent) == 2)
     assert r.session.sent[1][3] == {"error": "That tool does not exist."}
     assert r.proposals == []
-    assert list(paths.created_files_dir().iterdir()) == []
-
-
-def test_model_proposal_waits_and_cannot_approve_itself(rig):
-    r = rig()
-    r.conversation.send_text("hello")
-    assert wait_until(lambda: r.sessions and r.session.sent)
-    r.conversation._outside_text_seen = True
-    r.give(
-        ToolRequest(
-            "c1",
-            PROPOSE_TOOL_NAME,
-            {"file_name": "a.txt", "content": "text", "confirmed": True, "approved": True},
-        )
-    )
-    assert wait_until(lambda: r.proposals)
-    assert wait_until(lambda: r.states[-1] is State.WARNING)
-    assert list(paths.created_files_dir().iterdir()) == []
-    assert not any(item[0] == "tool" for item in r.session.sent)
-
-
-def test_model_gets_the_true_result_after_a_person_confirms(rig):
-    r = rig()
-    r.conversation.send_text("hello")
-    assert wait_until(lambda: r.sessions and r.session.sent)
-    r.conversation._outside_text_seen = True
-    r.give(ToolRequest("c1", PROPOSE_TOOL_NAME, {"file_name": "a.txt", "content": "text"}))
-    assert wait_until(lambda: r.proposals)
-    r.conversation.confirm(HumanPress(r.proposals[0].id))
-    assert wait_until(lambda: r.resolved)
-    assert r.resolved[0].outcome is Outcome.CREATED
-    assert wait_until(lambda: r.session.sent[-1][0] == "tool")
-    assert r.session.sent[-1][1] == "c1"
-    assert r.session.sent[-1][3]["created"] is True
-    assert (paths.created_files_dir() / "a.txt").read_text() == "text"
-
-
-def test_model_is_told_when_the_person_cancels(rig):
-    r = rig()
-    r.conversation.send_text("hello")
-    assert wait_until(lambda: r.sessions and r.session.sent)
-    r.conversation._outside_text_seen = True
-    r.give(ToolRequest("c1", PROPOSE_TOOL_NAME, {"file_name": "a.txt", "content": "text"}))
-    assert wait_until(lambda: r.proposals)
-    r.conversation.cancel(r.proposals[0].id)
-    assert wait_until(lambda: r.session.sent[-1][0] == "tool")
-    assert r.session.sent[-1][3]["created"] is False
-    assert list(paths.created_files_dir().iterdir()) == []
-
-
-def test_real_time_expiry_tells_the_model_and_creates_nothing(rig):
-    r = rig(gate=ActionGate(expiry_seconds=0.1))
-    r.conversation.send_text("hello")
-    assert wait_until(lambda: r.sessions and r.session.sent)
-    r.conversation._outside_text_seen = True
-    r.give(ToolRequest("c1", PROPOSE_TOOL_NAME, {"file_name": "a.txt", "content": "text"}))
-    assert wait_until(lambda: r.resolved)
-    assert r.resolved[0].outcome is Outcome.EXPIRED
-    assert wait_until(lambda: r.session.sent[-1][0] == "tool")
-    assert r.session.sent[-1][3]["created"] is False
     assert list(paths.created_files_dir().iterdir()) == []
 
 

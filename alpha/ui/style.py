@@ -46,12 +46,24 @@ QPushButton:hover { background: #1c2740; }
 QPushButton:checked { background: #10283a; border-color: #19e3e3; color: #bff7f7; }
 QPushButton#share:checked { background: #e0243a; border-color: #e0243a; color: #ffffff; font-weight: 700; }
 QPushButton:disabled { color: #566380; border-color: #1c2436; }
-QFrame#card QPushButton#confirm { background: #ffb020; border-color: #ffb020; color: #1a1000; font-weight: 700; }
-QFrame#card QPushButton#confirm:hover { background: #ffc252; }
-QFrame#card QPushButton#confirm:disabled { background: #4d3a14; border-color: #4d3a14; color: #8a7443; }
-QFrame#card { background: #17130a; border: 1px solid #ffb020; border-radius: 12px; }
+QFrame#card { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(14, 26, 66, 248), stop:1 rgba(24, 14, 58, 248));
+    border: 1px solid rgba(34, 230, 255, 190); border-top: 2px solid #22e6ff; border-radius: 16px; }
 QFrame#card QWidget { background: transparent; }
-QLabel#cardTitle { font-weight: 600; color: #ffd27a; }
+QLabel#cardHeading { font-size: 11px; font-weight: 700; letter-spacing: 3px; color: #22e6ff; }
+QLabel#cardTitle { font-size: 19px; font-weight: 600; color: #ffffff; }
+QLabel#cardWhere { font-size: 13px; color: #b9c8ea; }
+QLabel#cardCountdown { font-size: 12px; color: #93a4c4; }
+QFrame#card QPlainTextEdit#cardPreview { background: rgba(6, 12, 36, 200); border: 1px solid rgba(120, 170, 255, 70);
+    border-radius: 8px; color: #dfe9f7; padding: 6px; }
+QProgressBar#cardTime { background: rgba(120, 170, 255, 40); border: none; border-radius: 1px; }
+QProgressBar#cardTime::chunk { background: #22e6ff; border-radius: 1px; }
+QFrame#card QPushButton#cardCancel { background: transparent; border: 1px solid rgba(120, 170, 255, 110);
+    border-radius: 10px; padding: 9px 20px; color: #d3def5; font-weight: 600; }
+QFrame#card QPushButton#cardCancel:hover { background: rgba(120, 170, 255, 40); border-color: #9dbbff; }
+QFrame#card QPushButton#confirm { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22e6ff, stop:1 #4d8dff);
+    border: none; border-radius: 10px; padding: 9px 26px; color: #04101f; font-weight: 700; letter-spacing: 1px; }
+QFrame#card QPushButton#confirm:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6df0ff, stop:1 #7aabff); }
+QFrame#card QPushButton#confirm:disabled { background: rgba(46, 70, 150, 150); color: rgba(255, 255, 255, 110); }
 /* Deep navy base, with cyan for information and violet for emphasis. */
 QFrame#hudPanel, QFrame#glass {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(18, 34, 84, 225), stop:1 rgba(26, 14, 66, 225));

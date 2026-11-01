@@ -104,7 +104,6 @@ def test_an_unknown_place_is_refused():
 
 def test_headlines_are_read_and_marked_as_outside_text():
     tool = everyday(httpx.MockTransport(fake_web))[1]["get_news"]
-    assert tool.reads_outside
     assert tool.run({})["untrusted_headlines"] == ["One", "Two"]
 
 
@@ -118,7 +117,6 @@ def test_the_clipboard_is_read_and_written():
     computer = Clipboard()
     tools = everyday(computer=computer)[1]
     assert tools["read_clipboard"].run({})["untrusted_clipboard"] == "copied words"
-    assert tools["read_clipboard"].reads_outside
     tools["write_clipboard"].run({"text": "fixed"})
     assert computer.text == "fixed"
 
@@ -156,7 +154,6 @@ def test_files_can_be_found_and_read(desk):
     _, _, tools = desk
     assert tools["find_files"].run({"folder": "Desktop", "name": "NOTES"})["found"]
     assert tools["read_file"].run({"path": "Desktop/notes.txt"})["untrusted_file_contents"] == "hello"
-    assert tools["read_file"].reads_outside
 
 
 def test_moving_can_be_undone(desk):
@@ -223,13 +220,6 @@ def test_the_owner_can_put_their_own_folders_off_limits(tmp_path):
     with pytest.raises(ToolRefused, match="off limits"):
         tools["read_file"].run({"path": str(secret / "a.txt")})
     listing.unlink()
-
-
-def test_deleting_is_never_quick_and_file_names_do_not_force_a_press(desk):
-    _, _, tools = desk
-    assert not tools["propose_delete_file"].quick
-    plan = tools["propose_move_file"].propose({"source": "Desktop/notes.txt", "destination_folder": "Documents"})
-    assert not plan.is_sensitive
 
 
 def test_deleting_goes_to_the_recycle_bin_and_is_checked(desk):

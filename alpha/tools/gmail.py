@@ -224,8 +224,8 @@ def gmail_tools(client: GmailClient) -> list[Tool]:
 
     return [
         Tool("gmail_search", "Search the owner's Gmail, for example 'is:unread' or 'from:bank'.",
-             {"query": (STRING, "A Gmail search."), "limit": (INTEGER, "1 to 10, default 5.")}, ("query",), run=search, reads_outside=True),
-        Tool("gmail_read", "Read one email.", {"message_id": (STRING, "From gmail_search.")}, ("message_id",), run=read, reads_outside=True),
+             {"query": (STRING, "A Gmail search."), "limit": (INTEGER, "1 to 10, default 5.")}, ("query",), run=search),
+        Tool("gmail_read", "Read one email.", {"message_id": (STRING, "From gmail_search.")}, ("message_id",), run=read),
         Tool("propose_gmail_send", "Ask the owner to approve sending an email.",
              {"to": (STRING, "One address."), "subject": (STRING, "The subject."), "body": (STRING, "The full text.")},
              ("to", "subject", "body"), propose=plan_send),

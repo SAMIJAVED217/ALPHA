@@ -1,9 +1,10 @@
-"""The safety gate: nothing sensitive happens until a person presses CONFIRM.
+"""The safety gate: what reaches it waits until a person presses CONFIRM.
 
-Carrying out a proposal needs a `HumanPress`, and the only place in the product
-that makes one is the CONFIRM button in `alpha.ui.confirm_card`, and only for a
-real press from the mouse. `Tool.quick` in `alpha.tools.registry` and the rules in
-`Conversation._run_tool` decide which actions may skip the gate at the owner's request.
+Carrying out a proposal needs a `HumanPress`. Only two places make one: the CONFIRM
+button in `alpha.ui.confirm_card`, for a real press from the mouse, and
+`Conversation._heard_decision`, for "confirm" heard by the local listener on the
+microphone. Nothing the model writes reaches either. `Tool.always_asks` in
+`alpha.tools.registry` decides which actions come here.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ class ProposalRefused(ValueError):
 
 
 class HumanPress:
-    """Proof that a person pressed the on-screen control for one proposal."""
+    """Proof that a person decided one proposal: a real press, or their word on the microphone."""
 
     def __init__(self, proposal_id: str):
         self.proposal_id = proposal_id

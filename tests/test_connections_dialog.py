@@ -1,4 +1,8 @@
+import gc
+
 import httpx
+import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 
 from alpha import keystore
 from alpha.tools import grok, notion
@@ -20,8 +24,32 @@ class Check:
             raise self.error
 
 
+opened = []
+
+
+@pytest.fixture(autouse=True)
+def closed_on_this_thread(qapp):
+    """A window left for the end of the run is destroyed after Qt has gone, which crashes the process."""
+    yield
+    while opened:
+        opened.pop().deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    gc.collect()
+
+
 def dialog(qapp, notion_check=None, grok_check=None):
-    return ConnectionsDialog(notion_client=notion_check or Check(), grok_client=grok_check or Check())
+    opened.append(
+        ConnectionsDialog(notion_client=notion_check or Check(), grok_client=grok_check or Check(), groq_client=Check())
+    )
+    return opened[-1]
+
+
+def test_connect_saves_a_pasted_groq_key_and_says_it_worked(qapp):
+    made = dialog(qapp)
+    made.groq_key.setText("gsk-key")
+    made.groq_button.click()
+    assert spin_until(lambda: made.groq_status.text() == "Groq is connected.")
+    assert keystore.load_secret(grok.GROQ_KEY_ACCOUNT) == "gsk-key"
 
 
 def test_connect_saves_a_pasted_notion_token_tidily_and_says_it_worked(qapp):

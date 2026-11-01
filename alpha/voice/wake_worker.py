@@ -11,6 +11,7 @@ import sys
 import time
 
 WAKE_WORDS = ("hey", "hi")
+DECISION_WORDS = ("confirm", "cancel")
 READ_BYTES = 3_200
 REPEAT_GAP_SECONDS = 2.0
 
@@ -25,7 +26,7 @@ def main(model_path: str) -> None:
 
     vosk.SetLogLevel(-1)
     model = vosk.Model(model_path)
-    listener = vosk.KaldiRecognizer(model, 16_000, json.dumps([*WAKE_WORDS, "[unk]"]))
+    listener = vosk.KaldiRecognizer(model, 16_000, json.dumps([*WAKE_WORDS, *DECISION_WORDS, "[unk]"]))
     say("ready")
     last_wake = 0.0
     while True:
@@ -36,12 +37,14 @@ def main(model_path: str) -> None:
             heard = json.loads(listener.Result()).get("text", "")
         else:
             heard = json.loads(listener.PartialResult()).get("partial", "")
-        if any(word in WAKE_WORDS for word in heard.split()):
+        words = heard.split()
+        decision = next((word for word in words if word in DECISION_WORDS), None)
+        if decision or any(word in WAKE_WORDS for word in words):
             listener.Reset()
             now = time.monotonic()
             if now - last_wake > REPEAT_GAP_SECONDS:
                 last_wake = now
-                say("wake")
+                say(decision or "wake")
 
 
 if __name__ == "__main__":

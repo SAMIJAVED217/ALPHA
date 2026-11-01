@@ -1,34 +1,18 @@
 """The list of tools the model may ask for.
 
-A tool either runs straight away (`run`) or only proposes (`propose`). Proposed
-tools go through the safety gate, and no tool can decide a proposal. A `quick`
-proposal skips the gate when the owner asked for it directly and nothing about it
-looks sensitive. Sending to other people and forgetting are never quick.
+A tool either runs straight away (`run`) or describes what it would do (`propose`).
+A proposal runs at once, unless the tool `always_asks`, which is for shutting down
+and restarting. Those go through the safety gate, and no tool can decide a proposal.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Callable
 
 STRING = "STRING"
 INTEGER = "INTEGER"
 BOOLEAN = "BOOLEAN"
-
-
-# Anything touching money, secrets, deletion, system control or other people keeps CONFIRM.
-# So does an open document, because typing replaces whatever is selected in it.
-SENSITIVE = re.compile(
-    r"\b(password|passcode|otp|pin|cvv|credit card|bank|banking|paypal|payment|pay|purchase|checkout|buy|order"
-    r"|transfer|wallet|crypto|delete|remove|erase|format|uninstall|shutdown|shut down|restart"
-    r"|powershell|cmd|command prompt|terminal|regedit|registry|administrator|sign in|log in|login"
-    r"|win|send|post|publish|submit|confirm|whatsapp|telegram|discord|slack|teams|kakaotalk|gmail|outlook"
-    r"|mail|inbox|instagram|messenger)\b"
-    r"|- (word|excel|powerpoint)\b"
-    r"|\w\.(py|txt|md|docx?|xlsx?|pptx?|csv|json|js|ts|html?|pdf|log|ini|ya?ml)\b",
-    re.IGNORECASE,
-)
 
 
 class ToolRefused(ValueError):
@@ -43,11 +27,6 @@ class Plan:
     where: str
     preview: str
     perform: Callable[[], str]
-    plain: bool = False  # Its text is only file names, which say nothing about what the action does.
-
-    @property
-    def is_sensitive(self) -> bool:
-        return not self.plain and SENSITIVE.search(f"{self.summary}\n{self.preview}") is not None
 
 
 @dataclass(frozen=True)
@@ -58,8 +37,7 @@ class Tool:
     required: tuple = ()
     run: Callable[[dict], dict] | None = None
     propose: Callable[[dict], Plan] | None = None
-    quick: bool = False
-    reads_outside: bool = False
+    always_asks: bool = False
 
     @property
     def needs_confirmation(self) -> bool:
@@ -81,11 +59,12 @@ class Tool:
 
 
 class ToolBox:
-    def __init__(self, tools: list[Tool], undo: UndoStack | None = None, board=None, reminders=None):
+    def __init__(self, tools: list[Tool], undo: UndoStack | None = None, board=None, reminders=None, computer=None):
         self._tools = {tool.name: tool for tool in tools}
         self.undo = undo or UndoStack()
         self.board = board
         self.reminders = reminders
+        self.computer = computer
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)

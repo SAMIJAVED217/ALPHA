@@ -33,6 +33,7 @@ from ..settings import Settings
 from ..memory import MemoryStore
 from ..state import State
 from ..tools import catalogue
+from ..tools.computer import skip_ad
 from ..tools.registry import ToolBox, ToolRefused
 from . import gemini, speech_model, wake_model
 from .events import (
@@ -61,6 +62,9 @@ FOLLOW_UP_SETTLE_SECONDS = 0.7
 FOLLOW_UP_SPEECH_CHUNKS = 3
 DIRECT_SPEECH_CHUNKS = 6
 LEAD_IN_CHUNKS = 6
+OWN_VOICE_SECONDS = 1.5
+PICTURE_COMING = {"ok": True, "detail": "The picture comes in the next message. Say nothing about it until then."}
+PICTURE_MESSAGE = "This is the picture I just shared. Describe only what is in it."
 
 Connector = Callable[[str, str], Awaitable[LiveSession]]
 
@@ -150,6 +154,7 @@ class Conversation(QObject):
         self._state = State.IDLE
         self._key_present = False
         self._playing = False
+        self._own_voice_gone_at = 0.0
         self._awaiting_reply = False
         self._reply_timer: asyncio.TimerHandle | None = None
         self._error_timer: asyncio.TimerHandle | None = None
@@ -160,7 +165,6 @@ class Conversation(QObject):
         self._vision: set[str] = set()
         self._attachments: list[Attachment] = []
         self._no_voice_for = ""
-        self._outside_text_seen = False
         self._silenced = False
         self._backup = backup
         self._unanswered = ""
@@ -310,6 +314,20 @@ class Conversation(QObject):
         except Exception:
             log.exception("Checking the watched pages failed")
 
+    def check_for_ads(self) -> None:
+        try:
+            self._tool_pool.submit(self._check_for_ads_on_tools_thread)
+        except RuntimeError:
+            log.info("Skipped checking for ads, because APLHA is closing")
+
+    def _check_for_ads_on_tools_thread(self) -> None:
+        computer = self._toolbox().computer
+        try:
+            if computer is not None and skip_ad(computer):
+                log.info("Pressed the Skip button on an ad")
+        except Exception:
+            log.exception("Checking for an ad failed")
+
     def check_reminders(self) -> None:
         try:
             self._tool_pool.submit(self._check_reminders_on_tools_thread)
@@ -371,7 +389,6 @@ class Conversation(QObject):
         """Chosen files go with the next message, once, and only then."""
         items, self._attachments = self._attachments, []
         if items:
-            self._outside_text_seen = True
             self.attachments_changed.emit([])
         for item in items:
             if item.is_photo:
@@ -387,7 +404,6 @@ class Conversation(QObject):
             try:
                 picture = await asyncio.to_thread(self._capture, source)
                 await session.send_image(picture)
-                self._outside_text_seen = True
             except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
                 self._vision.discard(source)
                 self.vision_changed.emit(set(self._vision))
@@ -483,7 +499,7 @@ class Conversation(QObject):
         self._spawn(self._turn_to_backup("Gemini did not reply in time."))
 
     async def _turn_to_backup(self, reason: str) -> None:
-        """Grok gets only the words of an unanswered message, and can answer but never act."""
+        """The second AI gets only the words of an unanswered message, and can answer but never act."""
         question, self._unanswered = self._unanswered, ""
         if not question or self._backup is None or not self._backup.connected():
             self._fail(reason)
@@ -491,11 +507,11 @@ class Conversation(QObject):
         self._stop_waiting_for_reply()
         self._awaiting_reply = True
         self._set_state(State.THINKING)
-        self.notice.emit(f"{reason} Asking Grok instead.")
+        self.notice.emit(f"{reason} Asking {self._backup.name} instead.")
         try:
             answer = await self._loop.run_in_executor(self._tool_pool, self._backup.stand_in, question)
         except Exception as error:
-            log.warning("Grok could not stand in: %s", error)
+            log.warning("The second AI could not stand in: %s", error)
             self._fail(reason)
             return
         if not self._awaiting_reply:
@@ -576,7 +592,6 @@ class Conversation(QObject):
         if not self._key_present:
             self._fail("Add your Gemini key in Settings before sending a message.")
             return
-        self._outside_text_seen = False
         self._silenced = False
         self._expect_reply()
         self._spawn(self._send_text(text))
@@ -603,7 +618,6 @@ class Conversation(QObject):
             return
         self._hush()
         self._stop_waiting_for_reply()
-        self._outside_text_seen = False
         self._silenced = False
         self._mic_gave_error = False
         while not self._speech.empty():
@@ -669,6 +683,7 @@ class Conversation(QObject):
                 lambda: self._hop(self._heard_wake_word),
                 lambda: self._hop(self._wake_died),
             )
+            self._wake.on_decision = lambda word: self._hop(self._heard_decision, word)
         except OSError as error:
             self._fail(f"The wake word listener could not start: {error}")
             self.hands_free_changed.emit(Mode.OFF)
@@ -708,8 +723,23 @@ class Conversation(QObject):
             log.info("Ignored a wake word with no clear speech behind it")
             return
         log.info("Wake word heard")
-        if self._mode in (Mode.WAITING, Mode.REPLYING, Mode.FOLLOW_UP):
+        if self._mode in (Mode.WAITING, Mode.REPLYING, Mode.FOLLOW_UP) and self._gate.current is None:
             self._start_hands_free_turn()
+
+    def _heard_decision(self, word: str) -> None:
+        """Comes only from the local listener on the microphone, so nothing the model writes can reach
+        it. The pause after speaking keeps APLHA's own voice from counting."""
+        proposal = self._gate.current
+        if proposal is None or self._playing or self._loop.time() < self._own_voice_gone_at:
+            return
+        if not self._someone_spoke():
+            log.info("Ignored a decision word with no clear speech behind it")
+            return
+        log.info("Heard '%s' for the waiting action", word)
+        if word == "confirm":
+            self._confirm(HumanPress(proposal.id))
+        else:
+            self._cancel(proposal.id)
 
     def _someone_spoke(self) -> bool:
         clear = sum(self._tracker.is_clear_speech(level_of(chunk)) for chunk in self._lead_in)
@@ -721,7 +751,6 @@ class Conversation(QObject):
         self._cancel_follow_up()
         self._hush()
         self._stop_waiting_for_reply()
-        self._outside_text_seen = False
         self._silenced = False
         self._tracker.reset()
         while not self._speech.empty():
@@ -749,7 +778,8 @@ class Conversation(QObject):
         level = level_of(chunk)
         if self._mode is Mode.WAITING:
             self._tracker.hear_room(level)
-        if self._mode in (Mode.WAITING, Mode.FOLLOW_UP) and self._follow_up_heard(level):
+        waiting_for_a_word = self._gate.current is not None
+        if self._mode in (Mode.WAITING, Mode.FOLLOW_UP) and self._follow_up_heard(level) and not waiting_for_a_word:
             self._start_hands_free_turn()
 
     def _follow_up_heard(self, level: float) -> bool:
@@ -974,6 +1004,7 @@ class Conversation(QObject):
 
     def _playback_finished(self) -> None:
         self._playing = False
+        self._own_voice_gone_at = self._loop.time() + OWN_VOICE_SECONDS
         if self._mode is Mode.REPLYING and not self._awaiting_reply:
             self._open_follow_up()
         if self._state not in (State.LISTENING, State.ERROR) and not self._awaiting_reply:
@@ -997,7 +1028,34 @@ class Conversation(QObject):
         if tool is None:
             self._answer_tool(request.call_id, request.name, {"error": "That tool does not exist."})
             return
+        if tool.name == catalogue.VIEW_TOOL:
+            self._spawn(self._share_view(request))
+            return
         self._tool_pool.submit(self._run_tool, tool, request)
+
+    async def _share_view(self, request: ToolRequest) -> None:
+        """The picture must follow the tool result. Sent before it, real Gemini never saw the picture
+        and invented an answer, so it goes afterwards with a message of its own."""
+        source, wanted = request.arguments.get("source"), request.arguments.get("on")
+        if source not in SOURCE_NAMES or not isinstance(wanted, bool):
+            self._tool_finished(request, {"ok": False, "detail": "source must be camera or screen, and on true or false."})
+            return
+        self._change_vision(source, wanted)
+        if not wanted:
+            self._tool_finished(request, {"ok": True, "detail": f"Stopped sharing {SOURCE_NAMES[source]}."})
+            return
+        try:
+            picture = await asyncio.to_thread(self._capture, source)
+            session = self._session
+            await self._send_tool_result(request.call_id, request.name, PICTURE_COMING, False)
+            await session.send_image(picture)
+            self._expect_reply()
+            await session.send_text(PICTURE_MESSAGE)
+        except (AttributeError, RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+            self._change_vision(source, False)
+            self._tool_finished(request, {"ok": False, "detail": f"Could not use {SOURCE_NAMES[source]}: {error}"})
+            return
+        self.notice.emit(f"Sent a picture of {SOURCE_NAMES[source]} to Gemini.")
 
     def _toolbox(self) -> ToolBox:
         if self._tools is None:
@@ -1008,20 +1066,17 @@ class Conversation(QObject):
         """Runs on the tools thread, so slow Windows calls never hold up the conversation."""
         arguments = request.arguments
         try:
-            if tool.name == FILE_TOOL and not self._outside_text_seen:
+            if tool.name == FILE_TOOL:
                 done = self._gate.create_file_now(arguments.get("file_name"), arguments.get("content"))
                 self._hop(self._tool_finished, request, done.as_result())
                 return
-            if tool.name == FILE_TOOL:
-                proposal = self._gate.propose_create_file(arguments.get("file_name"), arguments.get("content"))
-            elif tool.needs_confirmation:
+            if tool.needs_confirmation:
                 plan = tool.propose(arguments)
-                if tool.quick and not self._outside_text_seen and not plan.is_sensitive:
+                if not tool.always_asks:
                     self._hop(self._tool_finished, request, {"ok": True, "completed": True, "detail": plan.perform()})
                     return
                 proposal = self._gate.propose(plan.summary, plan.where, plan.preview, plan.perform)
             else:
-                self._outside_text_seen = self._outside_text_seen or tool.reads_outside
                 self._hop(self._tool_finished, request, tool.run(arguments))
                 return
         except (ProposalRefused, ToolRefused) as error:

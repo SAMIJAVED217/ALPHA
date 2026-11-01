@@ -127,6 +127,24 @@ def _into_window(computer, handle: int, title: str) -> None:
         raise ToolRefused(f"Windows would not bring '{title}' to the front, so nothing was sent.")
 
 
+CALL_BUTTONS = {
+    "voice": ("voice call", "audio call", "call", "start call", "start voice call", "음성 통화", "통화", "보이스톡"),
+    "video": ("video call", "start video call", "영상 통화", "페이스톡"),
+}
+_SKIP_AD = re.compile(r"(skip|skip ad|skip ads|건너뛰기|광고 건너뛰기)", re.IGNORECASE)
+
+
+def skip_ad(computer) -> bool:
+    """Presses YouTube's own Skip button, only in the window the owner is looking at, so focus never jumps."""
+    for handle, title in computer.windows().items():
+        if "youtube" in title.lower() and computer.in_front(handle):
+            for item in computer.read_window(handle):
+                if item["kind"] == "button" and _SKIP_AD.fullmatch(item["name"].strip()):
+                    computer.click(item["x"], item["y"], False)
+                    return True
+    return False
+
+
 MEDIA_ACTIONS = ("play_pause", "next", "previous", "stop")
 POWER_DELAY_SECONDS = 30
 POWER_ACTIONS = {"shutdown": "shut down", "restart": "restart"}
@@ -384,6 +402,21 @@ def computer_tools(computer, undo: UndoStack | None = None) -> list[Tool]:
             perform,
         )
 
+    def call_person(arguments):
+        app = _messenger(text(arguments, "app", 40))
+        person = text(arguments, "person", 100)
+        kind = text(arguments, "kind", 10).strip().lower()
+        if kind not in CALL_BUTTONS:
+            raise ToolRefused("kind must be voice or video.")
+        handle, _ = search_chats(app, person)
+        computer.press_keys(["enter"])
+        time.sleep(STEP_SECONDS * 2)
+        for item in computer.read_window(handle):
+            if item["kind"] == "button" and item["name"].strip().lower() in CALL_BUTTONS[kind]:
+                computer.click(item["x"], item["y"], False)
+                return {"ok": True, "detail": f"Pressed the {kind} call button for {person} in {app.name}."}
+        raise ToolRefused(f"Opened {person}'s chat in {app.name}, but could not find a {kind} call button.")
+
     def undo_last(_):
         return {"ok": True, "detail": undo.undo()}
 
@@ -393,15 +426,21 @@ def computer_tools(computer, undo: UndoStack | None = None) -> list[Tool]:
              {"url": (STRING, "For example youtube.com.")}, ("url",), run=open_website),
         Tool("search_web", "Search the web in the owner's browser.",
              {"query": (STRING, "What to search for.")}, ("query",), run=search_web),
+        Tool(
+            "call_person",
+            "Start a voice or video call with someone in a messaging app, when the owner asks.",
+            {"app": (STRING, MESSENGER_NAMES), "person": (STRING, "Their name."), "kind": (STRING, "voice or video.")},
+            ("app", "person", "kind"),
+            run=call_person,
+        ),
         Tool("read_window", "Read the labels and text visible in a window, including web pages and chat apps.",
-             WINDOW_PARAM, ("window",), run=read_window, reads_outside=True),
+             WINDOW_PARAM, ("window",), run=read_window),
         Tool(
             "propose_click_control",
             "Click something by its label, from read_window.",
             {**WINDOW_PARAM, "label": (STRING, "The exact label.")},
             ("window", "label"),
             propose=plan_click_control,
-            quick=True,
         ),
         Tool(
             "find_chat",
@@ -427,7 +466,7 @@ def computer_tools(computer, undo: UndoStack | None = None) -> list[Tool]:
         Tool("media_control", "Pause, resume, skip or stop whatever is playing.",
              {"action": (STRING, "play_pause, next, previous or stop.")}, ("action",), run=media_control),
         Tool("propose_power_off", "Shut down or restart the computer, only when the owner asks.",
-             {"action": (STRING, "shutdown or restart.")}, ("action",), propose=plan_power),
+             {"action": (STRING, "shutdown or restart.")}, ("action",), propose=plan_power, always_asks=True),
         Tool("cancel_power_off", "Stop a shutdown or restart that is counting down.", run=cancel_power),
         Tool("lock_computer", "Lock the computer, only when the owner asks.", run=lock),
         Tool("sleep_computer", "Put the computer to sleep, only when the owner asks.", run=sleep),
@@ -444,14 +483,13 @@ def computer_tools(computer, undo: UndoStack | None = None) -> list[Tool]:
         Tool("minimize_window", "Minimise a window.", WINDOW_PARAM, ("window",), run=shower("minimize", "Minimised")),
         Tool("maximize_window", "Maximise a window.", WINDOW_PARAM, ("window",), run=shower("maximize", "Maximised")),
         Tool("restore_window", "Restore a minimised window.", WINDOW_PARAM, ("window",), run=shower("restore", "Restored")),
-        Tool("propose_close_window", "Close a window.", WINDOW_PARAM, ("window",), propose=plan_close, quick=True),
+        Tool("propose_close_window", "Close a window.", WINDOW_PARAM, ("window",), propose=plan_close),
         Tool(
             "propose_type_text",
             "Type text into a window.",
             {**WINDOW_PARAM, "text": (STRING, "The exact text to type.")},
             ("window", "text"),
             propose=plan_type,
-            quick=True,
         ),
         Tool(
             "propose_press_keys",
@@ -459,7 +497,6 @@ def computer_tools(computer, undo: UndoStack | None = None) -> list[Tool]:
             {**WINDOW_PARAM, "keys": (STRING, "For example ctrl+s, alt+f4 or enter.")},
             ("window", "keys"),
             propose=plan_keys,
-            quick=True,
         ),
         Tool(
             "propose_mouse_click",

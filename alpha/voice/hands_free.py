@@ -88,6 +88,7 @@ class WakeProcess:
         self._on_ready = on_ready
         self._on_wake = on_wake
         self._on_exit = on_exit
+        self.on_decision: Callable[[str], None] | None = None
         self._waiting: deque[bytes] = deque(maxlen=_MOST_WAITING_CHUNKS)
         self._wanted = threading.Event()
         self._stopping = False
@@ -127,6 +128,8 @@ class WakeProcess:
                 self._on_ready()
             elif event == "wake":
                 self._on_wake()
+            elif event in ("confirm", "cancel") and self.on_decision is not None:
+                self.on_decision(event)
         if not self._stopping:
             log.warning("The wake word listener stopped unexpectedly.")
             self._on_exit()

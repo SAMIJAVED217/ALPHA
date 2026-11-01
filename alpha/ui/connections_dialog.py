@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import Future
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QDialog, QFormLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout
 
 from .. import keystore
 from ..tools import gmail, grok, notion
@@ -14,18 +15,32 @@ from ..tools.registry import ToolRefused
 from .style import dark_title_bar
 
 log = logging.getLogger(__name__)
+POLL_MS = 100
+
+
+def _in_background(work, *arguments) -> Future:
+    """The thread never touches the window. If it held the last reference to one, Qt would crash
+    destroying that window off the interface thread."""
+    future = Future()
+
+    def run():
+        try:
+            future.set_result(work(*arguments))
+        except Exception as error:
+            future.set_exception(error)
+
+    threading.Thread(target=run, name="alpha-connection", daemon=True).start()
+    return future
 
 
 class ConnectionsDialog(QDialog):
-    _gmail_done = Signal(str)
-    _check_done = Signal(object, object, str)
-
-    def __init__(self, parent=None, notion_client=None, grok_client=None):
+    def __init__(self, parent=None, notion_client=None, grok_client=None, groq_client=None):
         super().__init__(parent)
         self.setWindowTitle("APLHA connections")
         self.setMinimumWidth(520)
         self._notion = notion_client or notion.NotionClient()
         self._grok = grok_client or grok.GrokClient()
+        self._groq = groq_client or grok.groq_client()
 
         heading = QLabel("Connections")
         heading.setObjectName("heading")
@@ -40,7 +55,11 @@ class ConnectionsDialog(QDialog):
         self.grok_button, self.grok_status = self._connect_row(
             "Grok", grok.KEY_ACCOUNT, lambda: self._check("Grok", self.grok_button, self.grok_status, self._grok.check)
         )
-        self.gmail_id = QLineEdit(keystore.load_secret(gmail.CLIENT_ID_ACCOUNT))
+        self.groq_key = self._secret_field(grok.GROQ_KEY_ACCOUNT, "Paste your free Groq API key")
+        self.groq_button, self.groq_status = self._connect_row(
+            "Groq", grok.GROQ_KEY_ACCOUNT, lambda: self._check("Groq", self.groq_button, self.groq_status, self._groq.check)
+        )
+        self.gmail_id =QLineEdit(keystore.load_secret(gmail.CLIENT_ID_ACCOUNT))
         self.gmail_id.setPlaceholderText("Google OAuth client id")
         self.gmail_secret = self._secret_field(gmail.CLIENT_SECRET_ACCOUNT, "Google OAuth client secret")
         self.gmail_button = QPushButton("Connect Gmail in your browser")
@@ -50,12 +69,16 @@ class ConnectionsDialog(QDialog):
         self.gmail_status.setWordWrap(True)
 
         form = QFormLayout()
-        form.addRow("Notion token", self.notion_token)
-        form.addRow("", self.notion_button)
-        form.addRow("", self.notion_status)
-        form.addRow("Grok (xAI) key", self.grok_key)
-        form.addRow("", self.grok_button)
-        form.addRow("", self.grok_status)
+        for name, field, button, status in (
+            ("Notion token", self.notion_token, self.notion_button, self.notion_status),
+            ("Groq key (free)", self.groq_key, self.groq_button, self.groq_status),
+            ("Grok (xAI) key", self.grok_key, self.grok_button, self.grok_status),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(field, 1)
+            row.addWidget(button)
+            form.addRow(name, row)
+            form.addRow("", status)
         form.addRow("Gmail client id", self.gmail_id)
         form.addRow("Gmail client secret", self.gmail_secret)
         form.addRow("", self.gmail_button)
@@ -68,8 +91,6 @@ class ConnectionsDialog(QDialog):
         layout.addWidget(note)
         layout.addLayout(form)
         layout.addWidget(save)
-        self._gmail_done.connect(self._gmail_finished)
-        self._check_done.connect(self._check_finished)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -96,6 +117,7 @@ class ConnectionsDialog(QDialog):
         for account, field in (
             (notion.TOKEN_ACCOUNT, self.notion_token),
             (grok.KEY_ACCOUNT, self.grok_key),
+            (grok.GROQ_KEY_ACCOUNT, self.groq_key),
             (gmail.CLIENT_ID_ACCOUNT, self.gmail_id),
             (gmail.CLIENT_SECRET_ACCOUNT, self.gmail_secret),
         ):
@@ -107,21 +129,30 @@ class ConnectionsDialog(QDialog):
         button.setEnabled(False)
         status.setText(f"Checking {name}...")
 
-        def work():
-            try:
-                test()
-                self._check_done.emit(button, status, f"{name} is connected.")
-            except ToolRefused as error:
-                self._check_done.emit(button, status, str(error))
-            except Exception as error:
+        def finished(error: BaseException | None) -> None:
+            button.setEnabled(True)
+            if error is None:
+                status.setText(f"{name} is connected.")
+            elif isinstance(error, ToolRefused):
+                status.setText(str(error))
+            else:
                 log.warning("%s could not be checked: %s", name, type(error).__name__)
-                self._check_done.emit(button, status, f"{name} could not be reached ({type(error).__name__}).")
+                status.setText(f"{name} could not be reached ({type(error).__name__}).")
 
-        threading.Thread(target=work, name="alpha-connection-check", daemon=True).start()
+        self._when_done(_in_background(test), finished)
 
-    def _check_finished(self, button: QPushButton, status: QLabel, message: str) -> None:
-        button.setEnabled(True)
-        status.setText(message)
+    def _when_done(self, future: Future, finished) -> None:
+        timer = QTimer(self)
+        timer.setInterval(POLL_MS)
+
+        def poll():
+            if future.done():
+                timer.stop()
+                timer.deleteLater()
+                finished(future.exception())
+
+        timer.timeout.connect(poll)
+        timer.start()
 
     def _connect_gmail(self) -> None:
         self._store_entries()
@@ -133,18 +164,11 @@ class ConnectionsDialog(QDialog):
         self.gmail_button.setEnabled(False)
         self.gmail_status.setText("Finish signing in with Google in your browser.")
 
-        def work():
-            try:
-                gmail.connect(client_id, client_secret)
-                self._gmail_done.emit("Gmail is connected.")
-            except Exception as error:
-                self._gmail_done.emit(f"Gmail did not connect: {error}")
+        def finished(error: BaseException | None) -> None:
+            self.gmail_button.setEnabled(True)
+            self.gmail_status.setText(f"Gmail did not connect: {error}" if error else "Gmail is connected.")
 
-        threading.Thread(target=work, name="alpha-gmail-connect", daemon=True).start()
-
-    def _gmail_finished(self, message: str) -> None:
-        self.gmail_button.setEnabled(True)
-        self.gmail_status.setText(message)
+        self._when_done(_in_background(gmail.connect, client_id, client_secret), finished)
 
     def _save(self) -> None:
         self._store_entries()

@@ -6,7 +6,7 @@ from .computer import computer_tools
 from .everyday import WebInfo, everyday_tools
 from .files import file_tools
 from .gmail import GmailClient, gmail_tools
-from .grok import GrokClient, grok_tools
+from .grok import SecondAI, grok_tools
 from .memory_tools import memory_tools
 from .notion import NotionClient, notion_tools
 from .registry import Tool, ToolBox, ToolRefused, UndoStack, text
@@ -17,6 +17,7 @@ from ..voice.persona import FILE_TOOL
 from ..watchdog import WatchBoard
 
 QUIT_TOOL = "close_aplha"
+VIEW_TOOL = "share_view"
 
 _FILE_PARAMETERS = {
     "file_name": ("STRING", "Name only, no folders, ending in .txt, .md, .csv, .json or .log."),
@@ -40,6 +41,10 @@ def _closing(_arguments):
     return {"ok": True, "detail": "Closing APLHA."}
 
 
+def _run_by_the_conversation(_arguments):
+    raise NotImplementedError("Sharing a view needs the live session, so the conversation does it.")
+
+
 def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> ToolBox:
     file_tool = Tool(
         FILE_TOOL,
@@ -47,7 +52,6 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
         _FILE_PARAMETERS,
         ("file_name", "content"),
         propose=_no_plan,
-        quick=True,
     )
     undo = UndoStack()
     on_computer = computer_tools(computer, undo)
@@ -67,6 +71,13 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
             *file_tools(computer, undo),
             Tool(QUIT_TOOL, "Close APLHA itself, only when the owner asks.", run=_closing),
             Tool(
+                VIEW_TOOL,
+                "Turn the owner's camera or screen sharing on or off, only when they ask you to look or stop.",
+                {"source": ("STRING", "camera or screen."), "on": ("BOOLEAN", "True to start, false to stop.")},
+                ("source", "on"),
+                run=_run_by_the_conversation,
+            ),
+            Tool(
                 "update_about_me",
                 "Change one answer in the owner's About me, when they tell you to or share a lasting change.",
                 {
@@ -84,13 +95,14 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
         undo,
         board,
         reminders,
+        computer,
     )
 
 
 def real_toolbox(memory) -> ToolBox:
     from .windows_computer import WindowsComputer
 
-    return build_toolbox(WindowsComputer(), memory, NotionClient(), GmailClient(), GrokClient())
+    return build_toolbox(WindowsComputer(), memory, NotionClient(), GmailClient(), SecondAI())
 
 
 def declarations() -> list[dict]:

@@ -72,6 +72,33 @@ def test_spotify_is_honest_that_it_needs_a_click(box, pc):
     assert "needs a click" in result["detail"]
 
 
+def with_call_buttons(pc):
+    pc.controls = [
+        {"name": "Voice call", "kind": "button", "x": 1, "y": 2},
+        {"name": "Video call", "kind": "button", "x": 3, "y": 4},
+    ]
+
+
+@pytest.mark.parametrize("kind, spot", [("voice", (1, 2)), ("video", (3, 4))])
+def test_calling_opens_the_chat_and_presses_the_right_button(box, pc, kind, spot):
+    with_call_buttons(pc)
+    result = run(box, "call_person", app="WhatsApp", person="Ali", kind=kind)
+    assert ("type", "Ali") in pc.log
+    assert ("click", *spot, False) in pc.log
+    assert result["ok"] is True
+
+
+def test_with_no_call_button_it_says_so_and_clicks_nothing(box, pc):
+    with pytest.raises(ToolRefused, match="call button"):
+        run(box, "call_person", app="WhatsApp", person="Ali", kind="video")
+    assert not any(step[0] == "click" for step in pc.log)
+
+
+def test_only_voice_and_video_calls_exist(box, pc):
+    with pytest.raises(ToolRefused, match="voice or video"):
+        run(box, "call_person", app="WhatsApp", person="Ali", kind="fax")
+
+
 def test_media_keys(box, pc):
     run(box, "media_control", action="next")
     assert ("media", "next") in pc.log

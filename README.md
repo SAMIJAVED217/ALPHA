@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-629-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-644-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -27,7 +27,7 @@ Most assistants either only chat, or can act but are trusted blindly. APLHA is b
 
 > **A language model can ask, but only a person can approve.**
 
-You talk to it, and it answers aloud in real time. It opens apps, handles files, reads PDFs, sets reminders and sends messages. Everyday commands run straight away. Anything sensitive waits for a real press of a button, and no AI output can fake that press.
+You talk to it, and it answers aloud in real time. It opens apps, handles files, reads PDFs, sets reminders and sends messages. What you ask for runs straight away. Only shutting down and restarting wait for you to say confirm, and no AI output can do that for you.
 
 ## What it does
 
@@ -47,9 +47,10 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 <summary><b>Two AI brains</b>: Gemini and Grok, chosen by the task</summary>
 
 - Gemini handles live conversation, pictures, the screen and every computer tool
-- Grok is asked for hard reasoning, maths, code, long writing and second opinions
-- If Grok fails, Gemini answers itself and says so
-- If Gemini cannot answer a typed message, Grok stands in. It has no tools, so it can answer but never act
+- The second AI is asked for hard reasoning, maths, code, long writing and second opinions
+- That is Grok from xAI, or Groq's free models if only a Groq key is saved
+- If it fails, Gemini answers itself and says so
+- If Gemini cannot answer a typed message, the second AI stands in. It has no tools, so it can answer but never act
 - Spoken turns need Gemini unless offline listening is on
 </details>
 
@@ -61,7 +62,7 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - The code works once and lasts five minutes
 - Send messages, follow replies and stop a reply from the page
 - The main screen shows a pill whenever it is on
-- It cannot press CONFIRM, so sensitive actions still wait at the PC
+- It cannot approve a shutdown, which still waits at the PC
 - Only private networks are accepted. The link is not encrypted, so use your own network
 </details>
 
@@ -74,7 +75,9 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 | "Set the volume to 40" | Sets it, reads it back, and can be undone |
 | "Close that window" | Asks the app politely, so it can offer to save |
 | "Lock the computer" | Locks straight away |
-| "Shut down" | Waits for CONFIRM, then counts down 30 seconds |
+| "Shut down" | Waits for you to say confirm, then counts down 30 seconds |
+| "Video call Ali on WhatsApp" | Opens the chat and presses the call button |
+| "Can you see me?" | Turns the camera on and describes the picture |
 </details>
 
 <details>
@@ -84,7 +87,7 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - Read PDFs and text files, and send photos to Gemini
 - Nothing is ever overwritten
 - Undo reverses moves, renames, copies and whole-folder organising
-- Deleting goes to the Recycle Bin after CONFIRM
+- Deleting goes to the Recycle Bin
 - System folders and folders you list are off limits
 </details>
 
@@ -97,6 +100,7 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - A short spoken briefing on the first start each day
 - "Translate what I copied" or "fix the text on my clipboard"
 - Music and video from YouTube in your browser, with pause and skip
+- YouTube's Skip button pressed for you, in the window you are watching
 </details>
 
 <details>
@@ -125,7 +129,7 @@ Say "watch this page for exam and scholarship". While it is open, APLHA checks e
 
 ## The safety gate
 
-A CONFIRM can only come from a real mouse press, which the code proves with an object only that press can create. The model has no tool that can make one.
+A shutdown or restart needs your own decision: say confirm or cancel, or press the button. Your word is heard by a small speech listener running on your computer, which reads only the microphone. Nothing the AI writes can reach it, and its own voice is ignored.
 
 ```mermaid
 sequenceDiagram
@@ -133,11 +137,11 @@ sequenceDiagram
     participant AI as Gemini
     participant Gate as Safety gate
     participant PC as Your computer
-    You->>AI: "Send Ali a message saying I'm late"
+    You->>AI: "Shut down the computer"
     AI->>Gate: Proposes the action
-    Gate-->>You: Shows a CONFIRM card with the exact text
+    Gate-->>You: Shows a permission card
     Note over AI,Gate: The AI cannot press it
-    You->>Gate: Real mouse press
+    You->>Gate: Says confirm
     Gate->>PC: Carries it out
     PC-->>AI: Reports the true result
 ```
@@ -145,16 +149,15 @@ sequenceDiagram
 <details>
 <summary><b>What runs at once, and what always asks</b></summary>
 
-| Runs at once | Always waits for CONFIRM |
+| Runs at once when you ask | Waits for your decision |
 | --- | --- |
-| Opening apps and websites | Sending messages and email |
-| Moving, renaming and copying files | Deleting files |
-| Volume, brightness and windows | Shutting down and restarting |
-| Typing into an untitled window | Typing into a named file |
-| Reminders, weather and news | Mouse clicks at a screen position |
-| | Anything mentioning money or passwords |
+| Opening and closing apps and windows | Shutting down |
+| Moving, deleting and copying files | Restarting |
+| Sending messages and email, and calling | |
+| Typing, clicking and the camera | |
+| Volume, reminders, weather and news | |
 
-**Outside text is treated as data.** After APLHA reads a page, email or file, even everyday actions need CONFIRM until you speak again. A hidden instruction on a page therefore cannot quietly act on your computer.
+**The rest relies on the AI understanding you.** With hands-free on, it can also hear other voices nearby, and a page it reads could try to mislead it. An overheard sentence or hidden text can therefore send a message or delete a file. It is told never to act on text it reads, but only shutdown has a hard stop. This is the owner's choice, for speed.
 </details>
 
 <details>
@@ -174,8 +177,8 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[64 tools]
-    Talk <--> Grok[Grok API]
+    Talk --> Tools[66 tools]
+    Talk <--> Second[Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
     Gate --> PC[Windows]
@@ -194,7 +197,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 64 declared tools, of which 7 always ask and 12 run at once only when judged safe |
+| **Tools** | 66 declared tools, of which only shutdown and restart ask |
 
 ```text
 alpha/
@@ -205,7 +208,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         629 automated tests
+tests/         644 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>
@@ -277,7 +280,7 @@ True fullscreen with OpenGL hid every menu, trapping the user. Leaving it then l
 <details>
 <summary><b>Typing that replaced a selection</b></summary>
 
-In a real test, typing landed in a restored document and replaced selected text. It was undone. **Fix:** typing into any window showing a named file now needs CONFIRM.
+In a real test, typing landed in a restored document and replaced selected text. It was undone. **Fix:** a CONFIRM rule was added for named files. The owner later dropped it for direct requests, choosing speed.
 </details>
 
 ## What has really been verified
@@ -286,10 +289,10 @@ Claims here are tested, not assumed. [docs/VERIFICATION.md](docs/VERIFICATION.md
 
 | Status | Features |
 | --- | --- |
-| **Seen working for real** | Voice conversation, hands-free, Esc, opening apps, typing, volume, music, weather, news, clipboard, saving a memory, photos, WhatsApp sending, a sample of language replies |
-| **Automated tests only** | Reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Notion, Grok, switching between Gemini and Grok, page watching, lock, sleep, shutdown, restart |
+| **Seen working for real** | Voice conversation, hands-free, Esc, the camera taking a picture, Gemini seeing a shared test picture, opening apps, typing, volume, music, weather, news, clipboard, saving a memory, photos, WhatsApp sending, a sample of language replies |
+| **Automated tests only** | Voice calls, video calls, skipping ads, confirming by voice, reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Notion, Grok, switching between Gemini and Grok, page watching, lock, sleep, shutdown, restart |
 | **Page tried, real devices not yet** | Phone and tablet control, tried in a browser against a pretend assistant |
-| **Not yet confirmed for real** | Answers about the screen, the camera, recalling a memory, KakaoTalk and other messaging apps |
+| **Not yet confirmed for real** | Answers about the screen, recalling a memory, KakaoTalk and other messaging apps |
 
 Tests use a temporary folder, a throwaway key store and pretend sound devices:
 
@@ -313,9 +316,9 @@ Your messages, your voice during a turn, pictures you share, your About me at th
 </details>
 
 <details>
-<summary><b>What gets sent to xAI?</b></summary>
+<summary><b>What gets sent to xAI or Groq?</b></summary>
 
-Only with an xAI key saved: the questions Gemini chooses to pass to Grok, and your typed message if Gemini cannot answer it. Your About me is not sent with them.
+Only with a key saved: the questions Gemini chooses to pass on, and your typed message if Gemini cannot answer it. Your About me is not sent with them.
 </details>
 
 <details>

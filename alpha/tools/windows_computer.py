@@ -321,6 +321,9 @@ class WindowsComputer:
         self._send([_key_event(0x12, 0, 0), _key_event(0x12, 0, _KEYUP)])
         self._user32.SetForegroundWindow(handle)
         time.sleep(0.2)
+        return self.in_front(handle)
+
+    def in_front(self, handle: int) -> bool:
         return int(self._user32.GetForegroundWindow() or 0) == handle
 
     def close_window(self, handle: int) -> bool:

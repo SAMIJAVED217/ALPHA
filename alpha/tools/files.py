@@ -117,7 +117,7 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
             undo.push(f"{source.name} moved back", lambda: shutil.move(str(target), str(source)))
             return f"Moved {source.name} to {target.parent}."
 
-        return Plan("move a file", f"{source} to {target.parent}", source.name, perform, plain=True)
+        return Plan("move a file", f"{source} to {target.parent}", source.name, perform)
 
     def plan_rename(arguments):
         source = _existing(arguments, "path")
@@ -131,7 +131,7 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
             undo.push(f"{new_name} renamed back", lambda: target.rename(source))
             return f"Renamed {source.name} to {new_name}."
 
-        return Plan("rename a file", f"{source.name} to {new_name}", source.name, perform, plain=True)
+        return Plan("rename a file", f"{source.name} to {new_name}", source.name, perform)
 
     def plan_copy(arguments):
         source = _existing(arguments, "source")
@@ -144,7 +144,7 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
             undo.push(f"the copy of {source.name} removed", target.unlink)
             return f"Copied {source.name} to {target.parent}."
 
-        return Plan("copy a file", f"{source} to {target.parent}", source.name, perform, plain=True)
+        return Plan("copy a file", f"{source} to {target.parent}", source.name, perform)
 
     def plan_new_folder(arguments):
         target = _free(_path(arguments, "path"))
@@ -154,7 +154,7 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
             undo.push(f"the empty folder {target.name} removed", target.rmdir)
             return f"Created the folder {target}."
 
-        return Plan("create a folder", str(target), target.name, perform, plain=True)
+        return Plan("create a folder", str(target), target.name, perform)
 
     def plan_organise(arguments):
         folder = _folder(arguments, "folder")
@@ -190,7 +190,7 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
             undo.push(f"{len(moves)} files in {folder.name} put back", put_back)
             return f"Organised {len(moves)} files in {folder.name} into folders by type."
 
-        return Plan("organise a folder", str(folder), f"{len(files)} files", perform, plain=True)
+        return Plan("organise a folder", str(folder), f"{len(files)} files", perform)
 
     def plan_delete(arguments):
         path = _existing(arguments, "path")
@@ -211,16 +211,15 @@ def file_tools(computer, undo: UndoStack) -> list[Tool]:
         Tool("list_folder", "List what is in a folder.", folder, ("folder",), run=list_folder),
         Tool("find_files", "Find files by part of their name.", {**folder, "name": (STRING, "Part of the name.")},
              ("folder", "name"), run=find_files),
-        Tool("read_file", "Read a text file, to summarise it or answer questions.", path, ("path",), run=read_file,
-             reads_outside=True),
+        Tool("read_file", "Read a text file, to summarise it or answer questions.", path, ("path",), run=read_file),
         Tool("propose_move_file", "Move a file or folder.", {**source, **destination}, ("source", "destination_folder"),
-             propose=plan_move, quick=True),
+             propose=plan_move),
         Tool("propose_rename_file", "Rename a file or folder.", {**path, "new_name": (STRING, "The new name only.")},
-             ("path", "new_name"), propose=plan_rename, quick=True),
+             ("path", "new_name"), propose=plan_rename),
         Tool("propose_copy_file", "Copy a file.", {**source, **destination}, ("source", "destination_folder"),
-             propose=plan_copy, quick=True),
-        Tool("propose_create_folder", "Create a new folder.", path, ("path",), propose=plan_new_folder, quick=True),
+             propose=plan_copy),
+        Tool("propose_create_folder", "Create a new folder.", path, ("path",), propose=plan_new_folder),
         Tool("propose_organise_folder", "Sort a folder's loose files into folders by type.", folder, ("folder",),
-             propose=plan_organise, quick=True),
+             propose=plan_organise),
         Tool("propose_delete_file", "Send a file to the Recycle Bin.", path, ("path",), propose=plan_delete),
     ]

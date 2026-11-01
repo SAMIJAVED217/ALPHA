@@ -2,7 +2,18 @@ import httpx
 import pytest
 
 from alpha.tools.catalogue import build_toolbox
-from alpha.tools.grok import API, MODELS, STAND_IN, GrokClient, choose_model, grok_tools
+from alpha.tools.grok import (
+    API,
+    GROQ_ROOT,
+    MODELS,
+    STAND_IN,
+    GrokClient,
+    SecondAI,
+    choose_groq_model,
+    choose_model,
+    grok_tools,
+    groq_client,
+)
 from alpha.tools.registry import ToolRefused
 
 OFFERED = {"data": [{"id": "grok-test"}]}
@@ -84,6 +95,66 @@ def test_checking_a_bad_key_says_so():
         client_answering(status=401).check()
 
 
+def answering_groq(seen=None, status=200):
+    def reply(request):
+        if seen is not None:
+            seen.append(request)
+        if status != 200:
+            return httpx.Response(status, json={})
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "whisper-large"}, {"id": "llama-test-versatile"}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "From Groq"}}]})
+
+    return groq_client(lambda: "gsk-test", httpx.MockTransport(reply))
+
+
+def test_groq_uses_its_own_address_and_a_chat_model():
+    seen = []
+    assert answering_groq(seen).ask("hello") == "From Groq"
+    assert str(seen[-1].url) == f"{GROQ_ROOT}/chat/completions"
+    assert b"llama-test-versatile" in seen[-1].content
+
+
+@pytest.mark.parametrize(
+    "offered, best",
+    [(["whisper-large", "llama-a-instant", "llama-b-versatile"], "llama-b-versatile"),
+     (["groq/compound", "openai/gpt-oss"], "openai/gpt-oss")],
+)
+def test_groqs_general_chat_model_is_chosen(offered, best):
+    assert choose_groq_model(offered) == best
+
+
+def test_groq_with_no_chat_model_is_reported():
+    with pytest.raises(ToolRefused, match="chat model"):
+        choose_groq_model(["whisper-large"])
+
+
+def test_groqs_free_limit_is_explained():
+    with pytest.raises(ToolRefused, match="usage limit"):
+        answering_groq(status=429).check()
+
+
+def test_xai_is_used_when_both_keys_are_saved():
+    second = SecondAI(GrokClient(lambda: "k"), answering_groq())
+    assert second.name == "Grok"
+
+
+def test_groq_is_used_when_only_its_key_is_saved():
+    second = SecondAI(GrokClient(lambda: ""), answering_groq())
+    assert second.name == "Groq" and second.connected()
+    assert second.ask("hello") == "From Groq"
+
+
+def test_with_neither_key_nothing_is_connected():
+    assert not SecondAI(GrokClient(lambda: ""), groq_client(lambda: "")).connected()
+
+
+def test_the_answer_says_truthfully_which_ai_gave_it():
+    tool = grok_tools(SecondAI(GrokClient(lambda: ""), answering_groq()))[0]
+    result = tool.run({"question": "hello"})
+    assert result["from"] == "Groq" and result["detail"] == "Groq answered."
+
+
 def test_connected_only_means_a_key_is_saved():
     assert GrokClient(lambda: "k").connected()
     assert not GrokClient(lambda: "").connected()
@@ -116,9 +187,9 @@ def test_a_dropped_connection_is_refused():
         GrokClient(lambda: "k", httpx.MockTransport(fail)).ask("hello")
 
 
-def test_grok_is_offered_and_its_answers_count_as_outside_text():
+def test_grok_is_offered_and_runs_at_once():
     tool = build_toolbox(None).get("ask_grok")
-    assert tool.reads_outside and not tool.needs_confirmation
+    assert not tool.needs_confirmation
 
 
 def test_the_tool_runs_a_question_and_limits_its_length():

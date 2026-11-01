@@ -184,9 +184,9 @@ def test_no_picture_is_taken_unless_sharing_is_on(vision):
     assert r.session.sent == [("text", "hello")]
 
 
-def test_the_model_has_no_tool_to_turn_sharing_on():
+def test_share_view_is_the_only_tool_that_turns_sharing_on():
     names = build_toolbox(None).names
-    assert not any("screen" in name or "camera" in name or "share" in name for name in names)
+    assert [name for name in names if "screen" in name or "camera" in name or "share" in name] == ["share_view"]
 
 
 def test_sharing_sends_one_picture_before_each_message_and_says_so(vision):

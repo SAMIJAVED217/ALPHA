@@ -71,6 +71,7 @@ LEFT_DRAWER_WIDTH = 380
 RIGHT_DRAWER_WIDTH = 460
 EDGE = 16
 REMINDER_CHECK_MS = 15_000
+AD_CHECK_MS = 5_000
 FIRST_WATCH_MS = 30_000
 WATCH_EVERY_MS = 15 * 60_000
 FILE_COMMAND = "/file "
@@ -234,7 +235,7 @@ class MainWindow(QMainWindow):
         centre = QVBoxLayout()
         centre.addStretch(1)
         centre.addWidget(self.detail_label)
-        centre.addWidget(self.card)
+        centre.addWidget(self.card, 0, Qt.AlignmentFlag.AlignHCenter)
         self.stage_hole.setLayout(centre)
 
         typing = QHBoxLayout()
@@ -339,6 +340,10 @@ class MainWindow(QMainWindow):
         self._reminder_timer.setInterval(REMINDER_CHECK_MS)
         self._reminder_timer.timeout.connect(self._conversation.check_reminders)
         self._reminder_timer.start()
+        self._ad_timer = QTimer(self)
+        self._ad_timer.setInterval(AD_CHECK_MS)
+        self._ad_timer.timeout.connect(self._check_for_ads)
+        self._ad_timer.start()
         self._last_level = 0.0
         self.refresh_panels()
         QApplication.instance().installEventFilter(self)
@@ -657,6 +662,8 @@ class MainWindow(QMainWindow):
         self.about_action.triggered.connect(self.open_about)
         self.briefing_action = QAction("Morning briefing", self, checkable=True, checked=self.settings.morning_briefing)
         self.briefing_action.toggled.connect(self.set_briefing)
+        self.skip_ads_action = QAction("Skip YouTube ads automatically", self, checkable=True, checked=self.settings.skip_ads)
+        self.skip_ads_action.toggled.connect(self.set_skip_ads)
         self.autostart_action = QAction("Start with Windows", self, checkable=True, checked=autostart.is_on())
         self.autostart_action.toggled.connect(self.set_autostart)
         self.top_action = QAction("Always on top", self, checkable=True)
@@ -678,7 +685,7 @@ class MainWindow(QMainWindow):
         menu.aboutToShow.connect(self._update_image_actions)
         for action in (self.about_action, self.connections_action, self.remote_action, self.remote_code_action,
                        self.compact_action, self.fullscreen_action, self.top_action,
-                       self.briefing_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
+                       self.briefing_action, self.skip_ads_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
             menu.addAction(action)
         choices = menu.addMenu("Language")
         group = QActionGroup(self)
@@ -719,6 +726,14 @@ class MainWindow(QMainWindow):
     def _phone_said(self, text: str) -> None:
         self._conversation.heard.emit(f"(from phone) {text}")
         self._conversation.send_text(text)
+
+    def set_skip_ads(self, on: bool) -> None:
+        self.settings.skip_ads = on
+        settings_store.save(self.settings)
+
+    def _check_for_ads(self) -> None:
+        if self.settings.skip_ads:
+            self._conversation.check_for_ads()
 
     def set_briefing(self, on: bool) -> None:
         self.settings.morning_briefing = on

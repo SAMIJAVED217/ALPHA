@@ -9,6 +9,7 @@ from alpha.audio.hub import AudioHub
 from alpha.settings import Settings
 from alpha.state import State
 from alpha.tools import computer as computer_module
+from alpha.tools.computer import skip_ad
 from alpha.voice import conversation as conversation_module
 from alpha.tools.catalogue import build_toolbox
 from alpha.tools.registry import Plan, ToolRefused
@@ -31,6 +32,10 @@ class FakeComputer:
         self.focus_works = True
         self.close_works = True
         self.new_window_on_open = True
+        self.front = None
+
+    def in_front(self, handle):
+        return handle == self.front
 
     def volume(self):
         return self.percent, self.muted
@@ -209,7 +214,7 @@ def test_only_harmless_tools_run_without_confirmation(box):
         "open_app", "list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window",
         "remember", "recall", "notion_search", "notion_read", "gmail_search", "gmail_read",
         "undo_last_action", "open_website", "search_web", "read_window", "find_chat", "ask_grok",
-        "watch_page", "list_watches", "stop_watching", "close_aplha", "cancel_power_off", "lock_computer",
+        "watch_page", "list_watches", "stop_watching", "close_aplha", "share_view", "call_person", "cancel_power_off", "lock_computer",
         "sleep_computer", "play_media", "media_control", "get_time", "set_reminder", "list_reminders",
         "cancel_reminder", "get_weather", "get_news", "read_clipboard", "write_clipboard", "list_folder",
         "find_files", "read_file", "update_about_me",
@@ -277,7 +282,8 @@ class Rig:
             return self.session
 
         self.conversation = Conversation(
-            Settings(), self.hub, connector=connect, load_key=lambda: "k", toolbox=build_toolbox(computer)
+            Settings(), self.hub, connector=connect, load_key=lambda: "k", toolbox=build_toolbox(computer),
+            capture=self._capture,
         )
         c = self.conversation
         c.notice.connect(self.notices.append)
@@ -287,6 +293,13 @@ class Rig:
         c.start()
         c.send_text("go")
         assert wait_until(lambda: self.session.sent)
+
+    camera_works = True
+
+    def _capture(self, source):
+        if not self.camera_works:
+            raise RuntimeError("no picture came")
+        return b"jpeg"
 
     def ask(self, name, **arguments):
         self.session.give(self.conversation._loop, ToolRequest("c1", name, arguments))
@@ -328,9 +341,8 @@ def test_unexpected_crash_in_a_tool_is_contained(rig, computer):
     assert rig.tool_results()[0][3] == {"ok": False, "detail": "That failed (ZeroDivisionError)."}
 
 
-def test_risky_tool_waits_for_a_person_and_a_model_cannot_add_approval(rig, computer):
-    rig.conversation._outside_text_seen = True
-    rig.ask("propose_type_text", window="excel", text="hello", confirmed=True, approved=True)
+def test_shutting_down_waits_and_a_model_cannot_add_approval(rig, computer):
+    rig.ask("propose_power_off", action="shutdown", confirmed=True, approved=True)
     assert wait_until(lambda: rig.proposals)
     assert wait_until(lambda: rig.states[-1] is State.WARNING)
     assert computer.log == []
@@ -338,34 +350,20 @@ def test_risky_tool_waits_for_a_person_and_a_model_cannot_add_approval(rig, comp
 
 
 def test_person_confirming_carries_it_out_and_reports_it(rig, computer):
-    rig.conversation._outside_text_seen = True
-    rig.ask("propose_type_text", window="excel", text="hello")
+    rig.ask("propose_power_off", action="restart")
     assert wait_until(lambda: rig.proposals)
     rig.conversation.confirm(HumanPress(rig.proposals[0].id))
     assert wait_until(lambda: rig.tool_results())
-    assert ("type", "hello") in computer.log
+    assert ("power", "restart") in computer.log
     assert rig.tool_results()[0][3]["completed"] is True
 
 
 def test_cancel_does_nothing_and_tells_the_model(rig, computer):
-    rig.conversation._outside_text_seen = True
-    rig.ask("propose_close_window", window="excel")
+    rig.ask("propose_power_off", action="shutdown")
     assert wait_until(lambda: rig.proposals)
     rig.conversation.cancel(rig.proposals[0].id)
     assert wait_until(lambda: rig.tool_results())
     assert computer.log == []
-    assert rig.tool_results()[0][3]["completed"] is False
-
-
-def test_failed_action_after_confirm_is_reported_as_failed(rig, computer):
-    computer.close_works = False
-    rig.conversation._outside_text_seen = True
-    rig.ask("propose_close_window", window="excel")
-    assert wait_until(lambda: rig.proposals)
-    rig.conversation.confirm(HumanPress(rig.proposals[0].id))
-    assert wait_until(lambda: rig.resolved)
-    assert rig.resolved[0].outcome is Outcome.FAILED
-    assert wait_until(lambda: rig.tool_results())
     assert rig.tool_results()[0][3]["completed"] is False
 
 
@@ -395,12 +393,23 @@ def test_asking_to_close_aplha_closes_it(rig, computer, monkeypatch):
     rig.conversation.quit_requested.connect(lambda: closed.append(1))
     rig.ask("close_aplha")
     assert wait_until(lambda: closed)
+    assert rig.proposals == []
 
 
-def test_typing_into_a_named_file_always_asks(rig, computer):
-    rig.ask("propose_type_text", window="excel", text="hello")
-    assert wait_until(lambda: rig.proposals)
-    assert ("type", "hello") not in computer.log
+def test_closing_a_window_runs_at_once(rig, computer):
+    rig.ask("propose_close_window", window="excel")
+    assert wait_until(lambda: rig.tool_results())
+    assert rig.proposals == []
+
+
+def test_only_shutting_down_and_restarting_ask(box):
+    assert {name for name in box.names if box.get(name).always_asks} == {"propose_power_off"}
+
+
+def test_what_the_owner_asks_for_runs_at_once_even_in_a_named_file(rig, computer):
+    rig.ask("propose_type_text", window="excel", text="my password is here")
+    assert wait_until(lambda: ("type", "my password is here") in computer.log)
+    assert rig.proposals == []
 
 
 def test_an_everyday_command_runs_without_asking(rig, computer):
@@ -411,61 +420,75 @@ def test_an_everyday_command_runs_without_asking(rig, computer):
     assert rig.proposals == []
 
 
-def test_after_reading_outside_text_it_asks_again_until_the_owner_speaks(rig, computer):
-    computer.read_window = lambda handle: []
-    rig.ask("read_window", window="untitled")
+def test_asking_to_be_seen_sends_the_picture_after_the_tool_result(rig, computer):
+    rig.ask("share_view", source="camera", on=True)
+    assert wait_until(lambda: any(item[0] == "image" for item in rig.session.sent))
+    assert wait_until(lambda: rig.session.sent[-1][0] == "text")
+    sent = [item[0] for item in rig.session.sent]
+    assert sent.index("tool") < sent.index("image") < len(sent) - 1
+    assert rig.conversation._vision == {"camera"}
+    assert rig.tool_results()[0][3]["ok"] is True
+
+
+def test_the_camera_can_be_turned_off_again(rig, computer):
+    rig.ask("share_view", source="camera", on=True)
     assert wait_until(lambda: rig.tool_results())
-    rig.ask("propose_type_text", window="untitled", text="hello")
-    assert wait_until(lambda: rig.proposals)
-    assert ("type", "hello") not in computer.log
-    rig.conversation.cancel(rig.proposals[0].id)
-    assert wait_until(lambda: rig.conversation._gate.current is None)
-    rig.conversation.send_text("now do it")
-    assert wait_until(lambda: not rig.conversation._outside_text_seen)
-    rig.ask("propose_type_text", window="untitled", text="hello")
-    assert wait_until(lambda: ("type", "hello") in computer.log)
+    rig.ask("share_view", source="camera", on=False)
+    assert wait_until(lambda: len(rig.tool_results()) == 2)
+    assert rig.conversation._vision == set()
 
 
-def test_a_mouse_click_always_asks(rig, computer):
+def test_a_camera_that_fails_is_reported_and_left_off(rig, computer):
+    rig.camera_works = False
+    rig.ask("share_view", source="camera", on=True)
+    assert wait_until(lambda: rig.tool_results())
+    assert rig.tool_results()[0][3]["ok"] is False
+    assert rig.conversation._vision == set()
+
+
+def test_only_the_camera_and_screen_can_be_shared(rig, computer):
+    rig.ask("share_view", source="microphone", on=True)
+    assert wait_until(lambda: rig.tool_results())
+    assert rig.tool_results()[0][3]["ok"] is False
+
+
+def video(computer, *controls):
+    computer.open_windows[9] = "Song - YouTube - Google Chrome"
+    computer.read_window = lambda handle: [
+        {"name": name, "kind": kind, "x": 7, "y": 8} for name, kind in controls
+    ]
+
+
+@pytest.mark.parametrize("name", ["Skip", "Skip Ad", "Skip Ads", "skip ad ", "광고 건너뛰기", "건너뛰기"])
+def test_the_skip_button_is_pressed_in_the_video_being_watched(computer, name):
+    video(computer, ("Play", "button"), (name, "button"))
+    computer.front = 9
+    assert skip_ad(computer)
+    assert ("click", 7, 8, False) in computer.log
+
+
+@pytest.mark.parametrize(
+    "name, kind",
+    [("Skip navigation", "button"), ("Skip to content", "link"), ("Skip", "text"), ("Subscribe", "button")],
+)
+def test_other_things_on_the_page_are_left_alone(computer, name, kind):
+    video(computer, (name, kind))
+    computer.front = 9
+    assert not skip_ad(computer)
+    assert computer.log == []
+
+
+def test_a_video_in_the_background_is_left_alone_so_focus_never_jumps(computer):
+    video(computer, ("Skip", "button"))
+    computer.front = 1
+    assert not skip_ad(computer)
+    assert computer.log == []
+
+
+def test_a_mouse_click_the_owner_asked_for_runs_at_once(rig, computer):
     rig.ask("propose_mouse_click", x=5, y=5)
-    assert wait_until(lambda: rig.proposals)
-
-
-@pytest.mark.parametrize(
-    "summary, preview",
-    [
-        ("click 'Pay now'", "Pay now"),
-        ("click 'Send'", "Send"),
-        ("press enter in: WhatsApp", "enter"),
-        ("press win+r in: Desktop", "win+r"),
-        ("press delete in: Files", "delete"),
-        ("type into: Windows PowerShell", "dir"),
-        ("type into: Notepad", "my password is"),
-        ("type into: gmail_assistant.py - Notepad", "hello"),
-        ("press ctrl+a in: notes.txt - Notepad", "ctrl+a"),
-        ("type into: Report - Word", "hello"),
-    ],
-)
-def test_sensitive_plans_are_recognised(summary, preview):
-    assert Plan(summary, "", preview, lambda: "").is_sensitive
-
-
-@pytest.mark.parametrize(
-    "summary, preview",
-    [
-        ("type into: Notepad", "hello there"),
-        ("type into: Untitled - Notepad", "hello. there"),
-        ("press ctrl+s in: Notepad", "ctrl+s"),
-        ("click 'Display'", "Display"),
-    ],
-)
-def test_everyday_plans_are_not_sensitive(summary, preview):
-    assert not Plan(summary, "", preview, lambda: "").is_sensitive
-
-
-def test_sending_and_blind_clicks_can_never_be_quick(box):
-    assert not box.get("propose_send_message").quick
-    assert not box.get("propose_mouse_click").quick
+    assert wait_until(lambda: rig.tool_results())
+    assert rig.proposals == []
 
 
 def test_general_proposals_expire_too(computer):
