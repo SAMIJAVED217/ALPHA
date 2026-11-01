@@ -801,25 +801,75 @@ def test_the_backup_can_be_switched_off(config_file):
 # Rate limits.
 
 
-def test_daily_wording_is_retried_because_it_also_appears_on_short_limits():
-    class Daily(Failure):
-        def __str__(self):
-            return "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+class UsedUp(Failure):
+    def __init__(self):
+        super().__init__(429)
 
-    gemini = Gemini([Daily(429)])
-    assert model_with(gemini).ask("s", [], "hello")
-    assert len(gemini.calls) == 2
+    def __str__(self):
+        return "429 quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier retryDelay: '59698s'"
 
 
-def test_only_after_every_try_does_it_say_the_limit_may_be_reached():
-    class Daily(Failure):
-        def __str__(self):
-            return "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+def spare_model(gemini, waits=None):
+    return ProfessorModel("first", load_key=lambda: "k", make_client=lambda key: gemini, sleep=lambda _s: None,
+                          on_wait=(waits if waits is not None else []).append, spare=("second", "third"))
 
-    gemini = Gemini([Daily(429), Daily(429), Daily(429)])
-    with pytest.raises(TeachingError, match="may be used up"):
-        model_with(gemini).ask("s", [], "hello")
+
+def test_a_used_up_model_moves_to_the_next_gemini_model_and_says_so():
+    gemini, waits = Gemini([UsedUp()]), []
+    model = spare_model(gemini, waits)
+    assert model.ask("s", [], "hello")
+    assert [call[0] for call in gemini.calls] == ["first", "second"]
+    assert model.model == "second" and "switching to second" in waits[0]
+
+
+def test_the_switch_lasts_so_it_does_not_waste_a_call_each_time():
+    gemini = Gemini([UsedUp()])
+    model = spare_model(gemini)
+    model.ask("s", [], "one")
+    model.ask("s", [], "two")
+    assert [call[0] for call in gemini.calls] == ["first", "second", "second"]
+
+
+def test_slides_can_move_to_the_next_gemini_model(tmp_path):
+    gemini = Gemini([UsedUp()])
+    slides = slide_loader.load([pdf_of(tmp_path / "lecture.pdf", 6)])
+    lesson = Lesson(COURSES[0], "s", "Week 9", "exam", slides, spare_model(gemini), config())
+    lesson.teach_next()
+    assert lesson.pointer == 6 and lesson.model_name == "second"
+    assert "inline_data" in gemini.calls[-1][1][-1]["parts"][0]
+
+
+def test_with_every_model_used_up_it_says_when_and_keeps_the_place():
+    gemini = Gemini([UsedUp(), UsedUp(), UsedUp()])
+    with pytest.raises(TeachingError, match="about 17 more hours"):
+        spare_model(gemini).ask("s", [], "hello")
     assert len(gemini.calls) == 3
+
+
+def test_a_short_limit_that_mentions_days_is_only_waited_for():
+    class Short(Failure):
+        def __str__(self):
+            return "429 quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier retryDelay: '30s'"
+
+    gemini = Gemini([Short(429)])
+    model = spare_model(gemini)
+    model.ask("s", [], "hello")
+    assert [call[0] for call in gemini.calls] == ["first", "first"]
+
+
+def test_a_used_up_day_is_not_waited_out():
+    slept = []
+    gemini = Gemini([UsedUp()])
+    with pytest.raises(TeachingError, match="used up"):
+        model_with(gemini, slept=slept).ask("s", [], "hello")
+    assert slept == []
+
+
+def test_backup_models_come_from_the_config(config_file):
+    raw = json.loads(config_file.read_text(encoding="utf-8"))
+    raw["gemini_backup_models"] = ["second"]
+    config_file.write_text(json.dumps(raw), encoding="utf-8")
+    assert professor.load_config(config_file).gemini_backup_models == ("second",)
 
 
 def test_the_wait_gemini_asks_for_is_respected():
@@ -835,7 +885,7 @@ def test_the_wait_gemini_asks_for_is_respected():
 def test_a_very_long_wait_is_capped():
     class Long(Failure):
         def __str__(self):
-            return "429 retryDelay: 900s"
+            return "429 retryDelay: 300s"
 
     slept = []
     model_with(Gemini([Long(429)]), slept=slept).ask("s", [], "hello")
@@ -937,7 +987,7 @@ def room(qapp, prompts, config_file, tmp_path, monkeypatch):
     conversation = FakeConversation()
     window = ProfessorWindow(
         conversation, config_path=config_file, prompts=prompts, sessions=tmp_path / "sessions",
-        make_model=lambda name, on_wait: model_with(gemini, []),
+        make_model=lambda name, on_wait, spare: model_with(gemini, []),
     )
     yield window, conversation, gemini
     window.deleteLater()
@@ -1035,6 +1085,23 @@ def test_a_message_while_gemini_is_working_does_not_start_a_second_call(room):
     release.set()
     assert spin_until(lambda: not window._busy)
     assert len(held) == 1
+
+
+@pytest.mark.parametrize("opening", ["---", "---\n\n---", "***", "  ---  "])
+def test_the_first_slide_survives_an_opening_line(room, opening):
+    window, _, _ = room
+    source = f"{opening}\n\n### Slide 1 — First\nWords.\n\n---\n\n### Slide 2 — Second\nMore."
+    window.notes.show_notes(source)
+    shown = window.notes.toPlainText()
+    assert "Slide 1" in shown and "Slide 2" in shown
+
+
+def test_a_new_lesson_keeps_its_first_slide_on_screen(room):
+    window, _, _ = room
+    window.start_class()
+    window.handle("cad")
+    window._add_note(math_render.Prepared("---\n\n### Slide 1 — First\nWords.\n\n---\n\n### Slide 2 — Second"))
+    assert "Slide 1" in window.notes.toPlainText()
 
 
 def test_a_course_name_keeps_its_ampersand(room):

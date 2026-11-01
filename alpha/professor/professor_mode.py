@@ -98,6 +98,7 @@ class ProfessorConfig:
     allow_groq_followups: bool = False
     groq_model: str = ""
     groq_when_gemini_fails: bool = True
+    gemini_backup_models: tuple[str, ...] = ()
 
 
 def load_config(path: Path | None = None) -> ProfessorConfig:
@@ -113,6 +114,7 @@ def load_config(path: Path | None = None) -> ProfessorConfig:
             allow_groq_followups=raw.get("allow_groq_followups") is True,
             groq_model=str(raw.get("groq_model", "")),
             groq_when_gemini_fails=raw.get("groq_when_gemini_fails") is not False,
+            gemini_backup_models=tuple(raw.get("gemini_backup_models", ())),
         )
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise ProfessorSetupError(f"{path.name} could not be read ({type(error).__name__}).") from error
@@ -234,6 +236,10 @@ class Lesson:
     @property
     def finished(self) -> bool:
         return self.pointer >= self.total
+
+    @property
+    def model_name(self) -> str:
+        return self._model.model
 
     @property
     def _system_now(self) -> str:

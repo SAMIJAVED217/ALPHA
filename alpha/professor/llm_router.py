@@ -20,8 +20,8 @@ MOST_TRIES = 3
 FIRST_WAIT_SECONDS = 4.0
 TIMEOUT_MS = 400_000
 LONGEST_WAIT_SECONDS = 60.0
+DAILY_LIMIT_SECONDS = 600.0
 _TRY_AGAIN_CODES = (429, 500, 502, 503, 504)
-_DAILY_LIMIT = re.compile(r"per.?day|daily", re.IGNORECASE)
 _WAIT_ASKED_FOR = re.compile(r"retry(?:delay)?\D{0,12}(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
 
@@ -41,8 +41,9 @@ def _real_client(key: str):
 
 class ProfessorModel:
     def __init__(self, model: str, load_key=keystore.load_key, make_client=_real_client,
-                 on_wait: Callable[[str], None] = lambda _message: None, sleep=time.sleep):
-        self._model = model
+                 on_wait: Callable[[str], None] = lambda _message: None, sleep=time.sleep, spare: tuple = ()):
+        self.model = model
+        self._spare = list(spare)
         self._load_key = load_key
         self._make_client = make_client
         self._on_wait = on_wait
@@ -81,18 +82,23 @@ class ProfessorModel:
             raise TeachingError("Gemini sent back no sound.") from error
 
     def _call(self, contents, config: dict, has_files: bool):
-        for attempt in range(1, MOST_TRIES + 1):
+        attempt = 0
+        while attempt < MOST_TRIES:
+            attempt += 1
             try:
-                return self._client.models.generate_content(model=self._model, contents=contents, config=config)
+                return self._client.models.generate_content(model=self.model, contents=contents, config=config)
             except Exception as error:
                 code = getattr(error, "code", None)
                 log.warning("Gemini call failed: %s %s: %s", type(error).__name__, code, str(error)[:300])
+                wait = self._wait_asked_for(error)
+                if code == 429 and wait >= DAILY_LIMIT_SECONDS:
+                    # Only a day-long wait proves it. The word "day" also appears on short limits.
+                    self._next_model(wait, error)
+                    attempt = 0
+                    continue
                 if code in _TRY_AGAIN_CODES and attempt < MOST_TRIES:
                     self._count_down(self._wait_for(error, attempt), attempt)
                     continue
-                if code == 429 and _DAILY_LIMIT.search(str(error)):
-                    # This wording also appears on short limits, so it is only a possibility.
-                    raise TeachingError("Gemini's free limit may be used up for now. Your place is saved, so try again later.") from error
                 if code in _TRY_AGAIN_CODES:
                     raise TeachingError("Gemini is still busy. Your place is kept, so try again in a minute.") from error
                 if code == 400 and has_files:
@@ -101,11 +107,22 @@ class ProfessorModel:
         raise TeachingError("Gemini could not answer.")
 
     @staticmethod
-    def _wait_for(error: Exception, attempt: int) -> float:
-        """Doubles each time, or waits as long as Gemini asks, whichever is longer."""
+    def _wait_asked_for(error: Exception) -> float:
         asked = _WAIT_ASKED_FOR.search(str(error))
-        wait = max(FIRST_WAIT_SECONDS * 2 ** (attempt - 1), float(asked[1]) if asked else 0.0)
-        return min(wait, LONGEST_WAIT_SECONDS)
+        return float(asked[1]) if asked else 0.0
+
+    def _wait_for(self, error: Exception, attempt: int) -> float:
+        """Doubles each time, or waits as long as Gemini asks, whichever is longer."""
+        return min(max(FIRST_WAIT_SECONDS * 2 ** (attempt - 1), self._wait_asked_for(error)), LONGEST_WAIT_SECONDS)
+
+    def _next_model(self, wait: float, error: Exception) -> None:
+        """Always shown, and always another Gemini model, which can read pages too."""
+        if not self._spare:
+            hours = max(1, round(wait / 3600))
+            raise TeachingError(f"Today's free Gemini limit is used up, for about {hours} more hours. Your place is saved.") from error
+        used_up, self.model = self.model, self._spare.pop(0)
+        log.warning("%s reached its daily limit, so using %s", used_up, self.model)
+        self._on_wait(f"Today's free limit for {used_up} is used up, so switching to {self.model}.")
 
     def _count_down(self, wait: float, attempt: int) -> None:
         for left in range(math.ceil(wait), 0, -1):

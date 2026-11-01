@@ -16,6 +16,7 @@ import numpy as np
 from .professor.llm_router import ProfessorModel, TeachingError
 
 READER_MODEL = "gemini-3.8-flash"
+READER_SPARE_MODELS = ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite")
 VOICE_MODEL = "gemini-3.8-flash-tts"
 VOICE_NAME = "Kore"
 NO_TEXT = "NO TEXT"
@@ -67,7 +68,7 @@ def as_speaker_sound(data: bytes, kind: str) -> bytes:
 
 class PageReader:
     def __init__(self, model: ProfessorModel | None = None, voice: ProfessorModel | None = None, on_wait=lambda _message: None):
-        self._model = model or ProfessorModel(READER_MODEL, on_wait=on_wait)
+        self._model = model or ProfessorModel(READER_MODEL, on_wait=on_wait, spare=READER_SPARE_MODELS)
         self._voice = voice or ProfessorModel(VOICE_MODEL, on_wait=on_wait)
 
     def translate(self, files: list[tuple[bytes, str]], language: str) -> str:

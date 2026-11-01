@@ -229,7 +229,7 @@ class ReaderWindow(QDialog):
     def _tell(signal, *values) -> None:
         try:
             signal.emit(*values)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             log.info("A reader result arrived after its window had gone")
 
     def _translate_and_speak(self, run: int, files, other_files, language: str, label: str) -> None:

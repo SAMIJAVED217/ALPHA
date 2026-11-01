@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-873-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-883-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -248,7 +248,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         873 automated tests
+tests/         883 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 
 from PySide6.QtCore import Signal
@@ -32,6 +33,7 @@ CHOOSING_COURSE, GIVING_DETAILS, CHOOSING_SLIDES, TEACHING = "course", "details"
 SLIDE_FILTER = "Slides (*.pdf *.png *.jpg *.jpeg)"
 CONTROLS = ("Next", "Simpler", "Deeper", "Example", "Why?", "Quiz me", "Summary", "Export")
 RESUME_CHOICES = 3
+_OPENING_LINES = re.compile(r"\A(\s*(-{3,}|\*{3,}|_{3,})[ \t]*(\n|\Z))+")
 
 
 class Notes(QTextBrowser):
@@ -40,6 +42,11 @@ class Notes(QTextBrowser):
     def __init__(self):
         super().__init__()
         self.pictures: dict[str, bytes] = {}
+
+    def show_notes(self, markdown: str) -> None:
+        """Qt takes a --- on the first line as a hidden header, and would drop everything up to the
+        next one. Gemini often starts that way, and that used to lose the first slide."""
+        self.setMarkdown(_OPENING_LINES.sub("", markdown))
 
     def loadResource(self, kind, name):
         data = self.pictures.get(name.toString())
@@ -238,6 +245,7 @@ class ProfessorWindow(QDialog):
         self._stage = GIVING_DETAILS
         self.heading.setText(course.name)
         self.course_area.hide()
+        self.notes.show()  # An empty notes area keeps the heading at the top of the window.
         self.input.setPlaceholderText("For example: week 9, ion implantation, exam prep")
         self._say("Which lecture is it, and is the goal to learn, exam prep or review?")
         self.input.setFocus()
@@ -257,7 +265,7 @@ class ProfessorWindow(QDialog):
         if not slides:
             self.status.setText("Those files have no pages.")
             return
-        model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit)
+        model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit, spare=self._config.gemini_backup_models)
         self._lesson = Lesson(self._course, self._system, self._lecture, self._goal, slides, model, self._config,
                               professor.groq_followups(self._config), professor.groq_standby(self._config))
         self._show_teaching()
@@ -279,7 +287,7 @@ class ProfessorWindow(QDialog):
         try:
             system = professor.build_system_prompt(course.id, self._prompts)
             slides = slide_loader.load(saved.data["files"])
-            model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit)
+            model = self._make_model(self._config.gemini_model, on_wait=self._waiting.emit, spare=self._config.gemini_backup_models)
             self._lesson = Lesson.restored(saved.data, course, system, slides, model, self._config,
                                            professor.groq_followups(self._config), professor.groq_standby(self._config))
         except (ProfessorSetupError, slide_loader.SlideError) as error:
@@ -352,7 +360,9 @@ class ProfessorWindow(QDialog):
             self.status.setText("Writing the summary and exam questions. This can take several minutes.")
 
     def _show_progress(self) -> None:
-        self.status.setText(f"Taught {self._lesson.pointer} of {self._lesson.total} slides.")
+        changed = self._lesson.model_name != self._config.gemini_model
+        using = f" Using {self._lesson.model_name}." if changed else ""
+        self.status.setText(f"Taught {self._lesson.pointer} of {self._lesson.total} slides.{using}")
         self.score.setText(f"Quiz score: {self._lesson.correct} / {self._lesson.graded}")
         self.score.setVisible(self._lesson.quizzing or self._lesson.graded > 0)
 
@@ -361,5 +371,5 @@ class ProfessorWindow(QDialog):
         start_of_new = int(self.notes.document().size().height()) if self._notes else 0
         self.notes.pictures.update(prepared.pictures)
         self._notes = f"{self._notes}\n\n---\n\n{prepared.markdown}" if self._notes else prepared.markdown
-        self.notes.setMarkdown(self._notes)
+        self.notes.show_notes(self._notes)
         self.notes.verticalScrollBar().setValue(start_of_new)
