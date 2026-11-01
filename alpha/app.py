@@ -57,6 +57,7 @@ def run(connector=None, backend_factory=None, gate=None, load_key=None, title="A
 
     from .audio.hub import AudioHub
     from .keystore import load_key as saved_key
+    from .tools.grok import GrokClient
     from .ui.main_window import MainWindow
     from .ui.single_instance import ShowRequests, wake_running_copy
     from .ui.style import SHEET
@@ -78,7 +79,10 @@ def run(connector=None, backend_factory=None, gate=None, load_key=None, title="A
 
     settings = settings_store.load()
     hub = AudioHub(backend_factory) if backend_factory else AudioHub()
-    conversation = Conversation(settings, hub, gate=gate, connector=connector, load_key=load_key or saved_key)
+    conversation = Conversation(
+        settings, hub, gate=gate, connector=connector, load_key=load_key or saved_key,
+        backup=None if connector else GrokClient(),
+    )
     window = MainWindow(settings, hub, conversation)
     window.setWindowTitle(title)
     tidier = InterfaceThreadTidier(window)

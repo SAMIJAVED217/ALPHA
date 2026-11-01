@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 
 import pytest
@@ -20,8 +21,23 @@ from .test_audio import drain, tone
 from .test_interface import spin_until as wait_until
 
 
+class Standby:
+    def __init__(self, answer="From Grok", ready=True, error=None):
+        self.answer, self.ready, self.error = answer, ready, error
+        self.asked = []
+
+    def connected(self):
+        return self.ready
+
+    def stand_in(self, question):
+        self.asked.append(question)
+        if self.error:
+            raise self.error
+        return self.answer
+
+
 class Rig:
-    def __init__(self, key="a-key", connect_error=None, gate=None):
+    def __init__(self, key="a-key", connect_error=None, gate=None, backup=None):
         self.backend = FakeBackend()
         self.hub = AudioHub(lambda: self.backend)
         self.sessions = []
@@ -35,7 +51,7 @@ class Rig:
         self.mic_states = []
         self.checks = []
         self.conversation = Conversation(
-            Settings(), self.hub, gate=gate, connector=self._connect, load_key=lambda: key
+            Settings(), self.hub, gate=gate, connector=self._connect, load_key=lambda: key, backup=backup
         )
         c = self.conversation
         c.state_changed.connect(lambda state, detail: self.states.append(state))
@@ -135,6 +151,71 @@ def test_failed_connection_shows_error_then_recovers(rig, monkeypatch):
     assert wait_until(lambda: State.ERROR in r.states)
     assert wait_until(lambda: any("internet" in notice for notice in r.notices))
     assert wait_until(lambda: r.states[-1] is State.IDLE)
+
+
+def test_grok_answers_a_typed_message_when_gemini_cannot_connect(rig):
+    standby = Standby()
+    r = rig(connect_error=OSError("network down"), backup=standby)
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: r.replies == ["From Grok"])
+    assert standby.asked == ["hello"]
+    assert any("Asking Grok instead" in notice for notice in r.notices)
+    assert wait_until(lambda: r.states[-1] is State.IDLE)
+    assert State.ERROR not in r.states
+
+
+def test_grok_answers_when_gemini_stays_silent(rig, monkeypatch):
+    monkeypatch.setattr(conversation_module, "REPLY_TIMEOUT_SECONDS", 0.05)
+    standby = Standby()
+    r = rig(backup=standby)
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: r.replies == ["From Grok"])
+
+
+def test_grok_is_not_asked_once_gemini_has_started_answering(rig, monkeypatch):
+    monkeypatch.setattr(conversation_module, "REPLY_TIMEOUT_SECONDS", 0.2)
+    standby = Standby()
+    r = rig(backup=standby)
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: r.sessions and r.session.sent)
+    r.give(ReplyText("Starting"))
+    assert wait_until(lambda: any("did not reply" in notice for notice in r.notices))
+    assert standby.asked == []
+
+
+def test_without_a_grok_key_the_gemini_failure_shows_as_before(rig):
+    standby = Standby(ready=False)
+    r = rig(connect_error=OSError("network down"), backup=standby)
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: State.ERROR in r.states)
+    assert standby.asked == []
+    assert not any("Grok" in notice for notice in r.notices)
+
+
+def test_when_grok_fails_too_the_gemini_failure_is_shown(rig):
+    r = rig(connect_error=OSError("network down"), backup=Standby(error=RuntimeError("no")))
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: State.ERROR in r.states)
+    assert any("internet" in notice for notice in r.notices)
+    assert r.replies == []
+
+
+def test_esc_throws_away_a_late_answer_from_grok(rig):
+    release = threading.Event()
+
+    class Slow(Standby):
+        def stand_in(self, question):
+            release.wait(5)
+            return "Too late"
+
+    r = rig(connect_error=OSError("network down"), backup=Slow())
+    r.conversation.send_text("hello")
+    assert wait_until(lambda: any("Asking Grok" in notice for notice in r.notices))
+    r.conversation.interrupt()
+    assert wait_until(lambda: any("Stopped" in notice for notice in r.notices))
+    release.set()
+    time.sleep(0.1)
+    assert r.replies == []
 
 
 def test_silent_gemini_is_reported_rather_than_waited_on_for_ever(rig, monkeypatch):

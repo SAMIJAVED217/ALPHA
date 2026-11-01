@@ -133,6 +133,7 @@ class Conversation(QObject):
         memory: MemoryStore | None = None,
         capture: Callable[[str], bytes] | None = None,
         wake_model_ready: Callable[[], bool] = wake_model.is_ready,
+        backup=None,
     ):
         super().__init__()
         self._settings = settings
@@ -161,6 +162,8 @@ class Conversation(QObject):
         self._no_voice_for = ""
         self._outside_text_seen = False
         self._silenced = False
+        self._backup = backup
+        self._unanswered = ""
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
             lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone)
@@ -282,6 +285,7 @@ class Conversation(QObject):
             return
         log.info("The owner interrupted the reply")
         self._silenced = True
+        self._unanswered = ""
         self._hush()
         self._stop_waiting_for_reply()
         self.reply_finished.emit()
@@ -476,7 +480,35 @@ class Conversation(QObject):
 
     def _reply_overdue(self) -> None:
         self._reply_timer = None
-        self._fail("Gemini did not reply in time.")
+        self._spawn(self._turn_to_backup("Gemini did not reply in time."))
+
+    async def _turn_to_backup(self, reason: str) -> None:
+        """Grok gets only the words of an unanswered message, and can answer but never act."""
+        question, self._unanswered = self._unanswered, ""
+        if not question or self._backup is None or not self._backup.connected():
+            self._fail(reason)
+            return
+        self._stop_waiting_for_reply()
+        self._awaiting_reply = True
+        self._set_state(State.THINKING)
+        self.notice.emit(f"{reason} Asking Grok instead.")
+        try:
+            answer = await self._loop.run_in_executor(self._tool_pool, self._backup.stand_in, question)
+        except Exception as error:
+            log.warning("Grok could not stand in: %s", error)
+            self._fail(reason)
+            return
+        if not self._awaiting_reply:
+            return
+        self._stop_waiting_for_reply()
+        self.replied.emit(answer)
+        self.reply_finished.emit()
+        if self._offline and self._narrator is not None:
+            self._reply_ended = False
+            self._offline_reply_text(answer)
+            self._finish_offline_reply()
+        else:
+            self._go_to_rest()
 
     # Connection.
 
@@ -528,7 +560,7 @@ class Conversation(QObject):
         self._tool_calls.clear()
         if self._awaiting_reply or self._playing:
             self.speaker.reply_complete()
-            self._fail(describe_failure(error, self._safe_key()))
+            self._spawn(self._turn_to_backup(describe_failure(error, self._safe_key())))
         else:
             self.notice.emit("The live session ended. The next message starts a fresh one.")
 
@@ -550,12 +582,13 @@ class Conversation(QObject):
         self._spawn(self._send_text(text))
 
     async def _send_text(self, text: str) -> None:
+        self._unanswered = text
         try:
             session = await self._session_ready()
             await self._send_pictures(session)
             await session.send_text(text)
         except Exception as error:
-            self._fail(describe_failure(error, self._safe_key()))
+            await self._turn_to_backup(describe_failure(error, self._safe_key()))
 
     # Voice turns.
 
@@ -901,6 +934,7 @@ class Conversation(QObject):
     # Events from the session.
 
     def _on_event(self, event) -> None:
+        self._unanswered = ""
         if self._silenced and self._drop_silenced(event):
             return
         speaking_here = self._offline and self._narrator is not None
