@@ -63,6 +63,10 @@ class NotionClient:
             raise ToolRefused(f"Notion answered with an error ({response.status_code}).")
         return response.json()
 
+    def check(self) -> None:
+        """Proves the token works. Pages still have to be shared with the integration."""
+        self.request("GET", "/users/me")
+
 
 def notion_tools(client: NotionClient) -> list[Tool]:
     def search(arguments):

@@ -73,6 +73,17 @@ def test_standing_in_tells_grok_it_cannot_act():
     assert STAND_IN.encode() in seen[-1].content
 
 
+def test_checking_a_key_lists_models_and_asks_nothing():
+    seen = []
+    client_answering(seen=seen).check()
+    assert [str(request.url) for request in seen] == [MODELS]
+
+
+def test_checking_a_bad_key_says_so():
+    with pytest.raises(ToolRefused, match="refused the key"):
+        client_answering(status=401).check()
+
+
 def test_connected_only_means_a_key_is_saved():
     assert GrokClient(lambda: "k").connected()
     assert not GrokClient(lambda: "").connected()

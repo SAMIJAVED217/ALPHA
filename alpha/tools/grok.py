@@ -74,17 +74,30 @@ class GrokClient:
         except ValueError as error:
             raise ToolRefused("xAI sent back something unexpected.") from error
 
-    def ask(self, question: str, instruction: str = "") -> str:
+    def _saved_key(self) -> str:
         key = self._load_key()
         if not key:
             raise ToolRefused("Grok is not connected yet. Add an xAI key under Settings, Connections.")
+        return key
+
+    def _pick_model(self, client: httpx.Client, key: str) -> None:
+        if not self._model:
+            listed = self._exchange(client, key, "GET", MODELS)
+            offered = listed.get("data") if isinstance(listed, dict) else None
+            self._model = choose_model([item.get("id", "") for item in offered or [] if isinstance(item, dict)])
+
+    def check(self) -> None:
+        """Proves the key works and that a chat model is available. Spends no credits."""
+        self._model = ""
+        with httpx.Client(transport=self._transport, timeout=20) as client:
+            self._pick_model(client, self._saved_key())
+
+    def ask(self, question: str, instruction: str = "") -> str:
+        key = self._saved_key()
         messages = [{"role": "system", "content": instruction}] if instruction else []
         messages.append({"role": "user", "content": question})
         with httpx.Client(transport=self._transport, timeout=60) as client:
-            if not self._model:
-                listed = self._exchange(client, key, "GET", MODELS)
-                offered = listed.get("data") if isinstance(listed, dict) else None
-                self._model = choose_model([item.get("id", "") for item in offered or [] if isinstance(item, dict)])
+            self._pick_model(client, key)
             answer = self._exchange(client, key, "POST", API, {"model": self._model, "messages": messages})
         try:
             return answer["choices"][0]["message"]["content"]
