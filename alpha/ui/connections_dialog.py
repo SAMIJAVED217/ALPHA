@@ -60,7 +60,7 @@ class ConnectionsDialog(QDialog):
             "Groq", grok.GROQ_KEY_ACCOUNT, lambda: self._check("Groq", self.groq_button, self.groq_status, self._groq.check)
         )
         self.keyword = self._secret_field(keystore.KEYWORD_ACCOUNT, "Common English words, known only to you")
-        self.keyword_note = QLabel("Changing your details will need this spoken. It works after APLHA restarts.")
+        self.keyword_note = QLabel("Changing your details will need this, spoken or typed. Speaking it works after APLHA restarts.")
         self.keyword_note.setObjectName("detail")
         self.keyword_note.setWordWrap(True)
         self.gmail_id = QLineEdit(keystore.load_secret(gmail.CLIENT_ID_ACCOUNT))

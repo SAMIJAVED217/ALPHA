@@ -1,9 +1,9 @@
 """The safety gate: what reaches it waits until a person presses CONFIRM.
 
-Carrying out a proposal needs a `HumanPress`. Only two places make one: the CONFIRM
-button in `alpha.ui.confirm_card`, for a real press from the mouse, and
-`Conversation._heard_decision`, for "confirm" heard by the local listener on the
-microphone. Nothing the model writes reaches either. `Tool.always_asks` in
+Carrying out a proposal needs a `HumanPress`. Only two places make one:
+`alpha.ui.confirm_card`, for a real press from the mouse or the owner's keyword typed
+on the card, and `Conversation._heard_decision`, for "confirm" or the keyword heard by
+the local listener on the microphone. Nothing the model writes reaches either. `Tool.always_asks` in
 `alpha.tools.registry` decides which actions come here.
 """
 
@@ -43,7 +43,7 @@ class ProposalRefused(ValueError):
 
 
 class HumanPress:
-    """Proof that a person decided one proposal: a real press, or their word on the microphone."""
+    """Proof that a person decided one proposal: a real press, their word on the microphone, or a typed keyword."""
 
     def __init__(self, proposal_id: str):
         self.proposal_id = proposal_id
@@ -62,7 +62,7 @@ class Proposal:
     detail: str = ""
     file_name: str = ""
     target: Path | None = None
-    owner_only: bool = False  # Saying confirm is not enough. It takes the keyword, or the button at the PC.
+    owner_only: bool = False  # Confirm is not enough once a keyword is set. It takes the keyword, spoken or typed.
 
     @property
     def succeeded(self) -> bool:

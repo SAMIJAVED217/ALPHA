@@ -31,6 +31,14 @@ def load_secret(account: str) -> str:
         raise KeyStoreError(f"Credential Manager could not be read: {type(error).__name__}") from None
 
 
+def owner_keyword() -> str:
+    """Empty when none is set, or when Credential Manager cannot be read."""
+    try:
+        return load_secret(KEYWORD_ACCOUNT)
+    except KeyStoreError:
+        return ""
+
+
 def delete_secret(account: str) -> None:
     try:
         keyring.delete_password(SERVICE, account)

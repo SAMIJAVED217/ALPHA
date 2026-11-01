@@ -143,7 +143,7 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
             Tool(
                 "update_about_me",
                 "Always use this when the owner tells you to change their details, or shares a lasting change, such as a new "
-                "home city. It waits for their spoken keyword, so never say it is done until the result says so.",
+                "home city. It waits for their keyword, so never say it is done until the result says so.",
                 {
                     "field": ("STRING", ", ".join(profile.FIELDS)),
                     "text": ("STRING", "The full new answer, keeping what still applies."),

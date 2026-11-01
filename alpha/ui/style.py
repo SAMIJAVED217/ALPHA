@@ -55,6 +55,8 @@ QLabel#cardWhere { font-size: 13px; color: #b9c8ea; }
 QLabel#cardCountdown { font-size: 12px; color: #93a4c4; }
 QFrame#card QPlainTextEdit#cardPreview { background: rgba(6, 12, 36, 200); border: 1px solid rgba(120, 170, 255, 70);
     border-radius: 8px; color: #dfe9f7; padding: 6px; }
+QFrame#card QLineEdit#cardKeyword { background: rgba(6, 12, 36, 200); border: 1px solid rgba(34, 230, 255, 170);
+    border-radius: 8px; color: #ffffff; padding: 9px 10px; }
 QProgressBar#cardTime { background: rgba(120, 170, 255, 40); border: none; border-radius: 1px; }
 QProgressBar#cardTime::chunk { background: #22e6ff; border-radius: 1px; }
 QFrame#card QPushButton#cardCancel { background: transparent; border: 1px solid rgba(120, 170, 255, 110);

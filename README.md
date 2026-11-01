@@ -10,7 +10,7 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok-4285F4)
-![Tests](https://img.shields.io/badge/Automated%20tests-892-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-903-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -195,7 +195,7 @@ sequenceDiagram
 | Typing, clicking and the camera | |
 | Volume, reminders, weather and news | |
 
-Changes to personal details need a private spoken keyword, heard only by the listener on your computer. It proves someone knows the word, not who they are.
+Changes to personal details need a private keyword, spoken to the listener on your computer or typed on the permission card. Clicking is not enough. It proves someone knows the word, not who they are.
 
 **The rest relies on the AI understanding you.** With hands-free on, it can also hear other voices nearby, and a page it reads could try to mislead it. An overheard sentence or hidden text can therefore send a message or delete a file. It is told never to act on text it reads, but only the actions in the right-hand column have a hard stop. This is the owner's choice, for speed.
 </details>
@@ -248,7 +248,7 @@ alpha/
   actions.py   The safety gate
   memory.py    Long-term memory
   watchdog.py  Page watching
-tests/         892 automated tests
+tests/         903 automated tests
 docs/          Requirements, licences and verification record
 ```
 </details>

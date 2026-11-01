@@ -193,7 +193,7 @@ class Conversation(QObject):
         self._reading = False
         self._tool_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alpha-tools")
         self._wake_factory = wake_factory or (
-            lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone, self._owner_keyword())
+            lambda ready, wake, gone: WakeProcess(wake_model.model_dir(), ready, wake, gone, keystore.owner_keyword())
         )
         self._wake_model_ready = wake_model_ready
         self._speech_factory = speech_factory or self._real_speech
@@ -929,13 +929,6 @@ class Conversation(QObject):
         if self._mode in (Mode.WAITING, Mode.REPLYING, Mode.FOLLOW_UP) and self._gate.current is None:
             self._start_hands_free_turn()
 
-    @staticmethod
-    def _owner_keyword() -> str:
-        try:
-            return keystore.load_secret(keystore.KEYWORD_ACCOUNT)
-        except keystore.KeyStoreError:
-            return ""
-
     def _heard_decision(self, word: str) -> None:
         """Comes only from the local listener on the microphone, so nothing the model writes can reach
         it. The pause after speaking keeps APLHA's own voice from counting."""
@@ -955,10 +948,10 @@ class Conversation(QObject):
         self._follow_up_settled_at = self._loop.time() + AFTER_DECISION_SECONDS
         if word == "cancel":
             self._cancel(proposal.id)
-        elif word == "keyword" or not (proposal.owner_only and self._owner_keyword()):
+        elif word == "keyword" or not (proposal.owner_only and keystore.owner_keyword()):
             self._confirm(HumanPress(proposal.id))
         else:
-            self.notice.emit("This one needs your keyword, or the button on this PC.")
+            self.notice.emit("This one needs your keyword. Say it, or type it on the card.")
 
     def _someone_spoke(self) -> bool:
         clear = sum(self._tracker.is_clear_speech(level_of(chunk)) for chunk in self._lead_in)

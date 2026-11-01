@@ -1,11 +1,16 @@
 """Voice control of APLHA's options, the spoken keyword, and learning from the owner."""
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLineEdit
 
 from alpha import keystore, lessons, profile
 from alpha.tools.catalogue import build_toolbox
 from alpha.tools.registry import ToolRefused
-from alpha.actions import HumanPress
+from alpha.actions import ActionGate, HumanPress
+from alpha.ui.confirm_card import WRONG_KEYWORD, ConfirmCard, same_keyword
 from alpha.voice import conversation as conversation_module
 from alpha.voice.hands_free import Mode
 
@@ -127,6 +132,99 @@ def test_saying_confirm_is_not_enough_once_a_keyword_is_set(ears):  # noqa: F811
     r.wake.on_decision("confirm")
     assert wait_until(lambda: any("keyword" in notice for notice in r.notices))
     assert r.conversation.gate.current is proposal
+
+
+@pytest.fixture
+def card(qapp):
+    gate = ActionGate()
+    made = ConfirmCard(gate, load_keyword=lambda: "Blue Falcon")
+    pressed = []
+    made.confirmed.connect(pressed.append)
+    proposal = gate.propose("change your details", "About me", "x", lambda: "Changed.", owner_only=True)
+    made.present(proposal)
+    yield made, proposal, pressed
+    made.deleteLater()
+
+
+def type_in(card_view, words):
+    QTest.keyClicks(card_view.keyword_box, words)
+    QTest.keyClick(card_view.keyword_box, Qt.Key.Key_Return)
+
+
+def test_a_keyword_action_offers_no_button(card):
+    made, _, _ = card
+    assert made.confirm_button.isHidden() and not made.keyword_box.isHidden()
+    assert made.confirm_button.proposal_id == ""
+    assert "keyword" in made._countdown.text()
+
+
+def test_the_button_cannot_approve_a_keyword_action(card):
+    made, _, pressed = card
+    made._arm()
+    made.show()
+    made.confirm_button.show()
+    QTest.mouseClick(made.confirm_button, Qt.MouseButton.LeftButton)
+    QCoreApplication.processEvents()
+    assert pressed == []
+
+
+def test_the_typed_keyword_approves_the_action(card):
+    made, proposal, pressed = card
+    type_in(made, "  blue   FALCON ")
+    QCoreApplication.processEvents()
+    assert [press.proposal_id for press in pressed] == [proposal.id]
+    assert made.keyword_box.text() == ""
+
+
+def test_a_wrong_keyword_is_refused_and_can_be_tried_again(card):
+    made, proposal, pressed = card
+    type_in(made, "red falcon")
+    QCoreApplication.processEvents()
+    assert pressed == [] and made.keyword_box.placeholderText() == WRONG_KEYWORD
+    type_in(made, "blue falcon")
+    QCoreApplication.processEvents()
+    assert [press.proposal_id for press in pressed] == [proposal.id]
+
+
+@pytest.mark.parametrize("typed, keyword", [("", ""), ("x", ""), ("", "x")])
+def test_an_empty_keyword_never_matches(typed, keyword):
+    assert not same_keyword(typed, keyword)
+
+
+def test_an_enter_sent_by_code_does_nothing(card):
+    made, _, pressed = card
+    made.keyword_box.setText("blue falcon")
+    QApplication.sendEvent(made.keyword_box, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier))
+    QCoreApplication.processEvents()
+    assert pressed == []
+
+
+def test_the_keyword_box_hides_what_is_typed(card):
+    made, _, _ = card
+    assert made.keyword_box.echoMode() == QLineEdit.EchoMode.Password
+
+
+def test_without_a_keyword_the_button_stays(qapp):
+    gate = ActionGate()
+    made = ConfirmCard(gate, load_keyword=lambda: "")
+    proposal = gate.propose("change your details", "About me", "x", lambda: "Changed.", owner_only=True)
+    made.present(proposal)
+    try:
+        assert not made.confirm_button.isHidden() and made.keyword_box.isHidden()
+        assert made.confirm_button.proposal_id == proposal.id
+        assert "Say confirm" in made._countdown.text()
+    finally:
+        made.deleteLater()
+
+
+def test_other_actions_keep_the_button_when_a_keyword_is_set(qapp):
+    gate = ActionGate()
+    made = ConfirmCard(gate, load_keyword=lambda: "blue falcon")
+    made.present(gate.propose("shut down", "This PC", "", lambda: "Done."))
+    try:
+        assert not made.confirm_button.isHidden() and made.keyword_box.isHidden()
+    finally:
+        made.deleteLater()
 
 
 def test_anyone_can_cancel(ears):  # noqa: F811
