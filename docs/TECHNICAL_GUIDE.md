@@ -60,6 +60,7 @@ alpha/
   voice/               Gemini session, hands-free, persona, offline speech
   tools/               Everything the assistant can do
   professor/           Professor Mode
+  mentor/              The Wheelix robotics and SLAM mentor
   ui/                  Windows, panels, the stage and the permission card
 tests/                 Automated tests
 docs/                  This guide, requirements, licences, verification record
@@ -201,7 +202,7 @@ Personal data lives in `%APPDATA%\ALPHA`, usually `C:\Users\<you>\AppData\Roamin
 
 ## How tools work
 
-The AI cannot touch Windows directly. It can only ask for one of 71 named tools.
+The AI cannot touch Windows directly. It can only ask for one of 72 named tools.
 
 | Group | Tools | Examples |
 | --- | --- | --- |
@@ -209,7 +210,7 @@ The AI cannot touch Windows directly. It can only ask for one of 71 named tools.
 | Files | 10 | `read_file`, `find_files`, `propose_move_file`, `propose_delete_file` |
 | Everyday | 8 | `get_time`, `set_reminder`, `get_weather`, `get_news`, `read_clipboard` |
 | Memory and learning | 6 | `remember`, `recall`, `propose_forget`, `update_about_me`, `learn_lesson` |
-| APLHA itself | 6 | `control_aplha`, `share_view`, `start_professor_mode`, `close_aplha` |
+| APLHA itself | 7 | `control_aplha`, `share_view`, `start_professor_mode`, `start_wheelix_mentor`, `close_aplha` |
 | Connections | 8 | `notion_search`, `gmail_read`, `propose_gmail_send`, `ask_grok` |
 | Page watching | 3 | `watch_page`, `list_watches`, `stop_watching` |
 
@@ -327,6 +328,17 @@ Sensitive rules are refused. Rules only shape replies, because every safety rule
 </details>
 
 <details>
+<summary><b>Wheelix mentor</b></summary>
+
+- Lives in `alpha/mentor/` and `ui/mentor_window.py`, and reuses Professor Mode's Gemini calls, spare models, notes window and equation drawing.
+- The teaching brief is the owner's own text in `prompts/mentor/wheelix.md`, read fresh at each start and never published. The app adds only how it works: a spoken first line, equations in LaTeX, diagrams as text, a few lesson parts per reply, and a list of real open-source projects to teach from.
+- Every reply ends with a hidden line, `PROGRESS: level | lesson | state`. The app removes it, shows the level and lesson, and keeps a list of passed lessons. Impossible levels or states are ignored.
+- It is one long course, saved after every answer to `sessions/mentor/wheelix.json`. After 16 exchanges, the older half becomes a summary, so requests stay small.
+- "Check my PC" runs fixed, read-only commands: Windows build, processor, memory, graphics, free space, `wsl --list --verbose`, `wsl --status`, and a look inside the default Linux for its version, `/opt/ros` and Gazebo. Starting WSL can take a few seconds.
+- It cannot see the screen, run commands or open files. The student sends terminal output, pictures and measurements.
+</details>
+
+<details>
 <summary><b>Live translation</b></summary>
 
 A separate Gemini session with `translation_config`. It detects the spoken language and speaks only the translation. `echo_target_language` is off, so it stays silent for its own language and does not translate itself from the speakers. Your sound is sent continuously while it runs.
@@ -391,7 +403,7 @@ Gmail uses Google's sign-in with PKCE through a temporary local address, and ask
 
 ## Testing
 
-There are 921 automated tests, run with pytest. A safe test run changes nothing real:
+There are 961 automated tests, run with pytest. A safe test run changes nothing real:
 
 - `ALPHA_HOME` points to a temporary folder, and `data_dir` refuses the real one under test.
 - Credential Manager is replaced with an in-memory store.
@@ -515,5 +527,5 @@ The app has no charge of its own. It uses your own API keys, so costs and limits
 <details>
 <summary><b>How much of it has really been tested?</b></summary>
 
-There are 921 automated tests, and a separate record of what has been seen working for real. Some features have only automated tests so far, and the record says which.
+There are 961 automated tests, and a separate record of what has been seen working for real. Some features have only automated tests so far, and the record says which.
 </details>

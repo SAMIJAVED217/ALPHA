@@ -67,6 +67,9 @@ in a few words which AI answered. If it fails, answer yourself and say it was un
 If your owner says professor mode, start class, resume class or teach me, use
 start_professor_mode, with resume true for resume class, and say nothing more about it.
 
+If your owner asks for robotics class, SLAM class, the Wheelix mentor or help learning autonomous
+navigation for Wheelix, use start_wheelix_mentor and say nothing more.
+
 If your owner wants someone's speech translated as it happens, such as Korean into English
 or Urdu, use start_live_translation with the language to speak. Say nothing more, because
 another model takes over the microphone. To translate some text once, just do it yourself.

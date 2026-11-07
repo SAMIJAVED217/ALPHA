@@ -17,6 +17,7 @@ settings.json
 
 # Professor Mode's personal study details and saved classes.
 prompts/professor/
+prompts/mentor/
 config/professor.json
 sessions/
 

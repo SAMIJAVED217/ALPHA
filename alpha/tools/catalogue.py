@@ -20,6 +20,7 @@ from ..watchdog import WatchBoard
 QUIT_TOOL = "close_aplha"
 VIEW_TOOL = "share_view"
 CLASS_TOOL = "start_professor_mode"
+MENTOR_TOOL = "start_wheelix_mentor"
 INTERPRET_TOOL = "start_live_translation"
 READER_TOOL = "open_translated_reader"
 CONTROL_TOOL = "control_aplha"
@@ -71,6 +72,10 @@ def _closing(_arguments):
 
 def _opening_class(arguments):
     return {"ok": True, "resume": arguments.get("resume") is True, "detail": "Opening Professor Mode."}
+
+
+def _opening_mentor(_arguments):
+    return {"ok": True, "detail": "Opening the Wheelix mentor."}
 
 
 def _starting_translation(arguments):
@@ -133,6 +138,9 @@ def build_toolbox(computer, memory=None, notion=None, gmail=None, grok=None) -> 
             ),
             Tool(CLASS_TOOL, "Open Professor Mode, when the owner says professor mode, start class, resume class or teach me.",
                  {"resume": ("BOOLEAN", "True when they said resume class.")}, run=_opening_class),
+            Tool(MENTOR_TOOL, "Open the Wheelix mentor, the owner's robotics and SLAM course, when they ask for "
+                              "robotics class, SLAM class, the Wheelix mentor or help learning autonomous navigation.",
+                 run=_opening_mentor),
             Tool(
                 VIEW_TOOL,
                 "Turn the owner's camera or screen sharing on or off, only when they ask you to look or stop.",

@@ -32,6 +32,7 @@ from ..audio.speaker import Speaker
 from ..settings import Settings
 from ..memory import MemoryStore
 from ..state import State
+from ..mentor import mentor
 from ..professor.professor_mode import is_enter, is_for_aplha, is_resume
 from ..tools import catalogue
 from ..tools.computer import skip_ad
@@ -127,6 +128,7 @@ class Conversation(QObject):
     reminder_due = Signal(str)
     link_changed = Signal(bool)
     class_requested = Signal()
+    mentor_requested = Signal()
     class_message = Signal(str)
     interpreter_requested = Signal(str)
     reader_requested = Signal(str, str)
@@ -442,6 +444,8 @@ class Conversation(QObject):
         """Text from any source passes here, so typing and speaking behave the same."""
         if self._in_class and not is_for_aplha(text):
             self.class_message.emit(text)
+        elif not self._in_class and mentor.is_enter(text):
+            self.mentor_requested.emit()
         elif not self._in_class and is_enter(text):
             self.class_requested.emit()
             if is_resume(text):
@@ -1322,6 +1326,8 @@ class Conversation(QObject):
             self.class_requested.emit()
             if result.get("resume"):
                 self.class_message.emit("resume class")
+        if request.name == catalogue.MENTOR_TOOL:
+            self.mentor_requested.emit()
         if request.name == catalogue.CONTROL_TOOL and result.get("ok"):
             self.aplha_command.emit(result["action"])
         if request.name == catalogue.READER_TOOL and result.get("ok"):

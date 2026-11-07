@@ -10,8 +10,8 @@
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
 ![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20OpenAI%20%2F%20Grok%20%2F%20Groq-4285F4)
-![Tools](https://img.shields.io/badge/Tools-71-FF8C00)
-![Tests](https://img.shields.io/badge/Automated%20tests-921-2EA44F)
+![Tools](https://img.shields.io/badge/Tools-72-FF8C00)
+![Tests](https://img.shields.io/badge/Automated%20tests-961-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -75,6 +75,20 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 - If it fails, Gemini answers itself and says so
 - If Gemini cannot answer a typed message, the second AI stands in. It has no tools, so it can answer but never act
 - Spoken turns need Gemini unless offline listening is on
+</details>
+
+<details>
+<summary><b>🤖 Wheelix mentor</b>: a robotics and SLAM course, from zero to a working autonomous wheelchair</summary>
+
+- Say "robotics class" or "Wheelix mentor", or choose it from the More menu
+- A long course that teaches autonomous navigation for the Wheelix wheelchair, level by level, from Linux and ROS 2 basics to SLAM, Nav2, perception and precision docking
+- Each lesson follows a fixed structure: objectives, intuition, mathematics, a Wheelix example, practical steps, troubleshooting, an exercise and a knowledge check
+- It does not move on until you have shown you understand, and the window shows your level, lesson and status
+- "Check my PC" measures Windows, the processor, memory, graphics, WSL, Ubuntu, ROS 2 and Gazebo, using fixed read-only commands, so setup advice fits your real computer
+- It builds on real open-source projects, including SLAM Toolbox, Nav2, robot_localization, ros2_control, TurtleBot3 and PythonRobotics, and tells you to check versions before installing
+- The course saves itself and carries on next time, with older parts kept as a summary
+- Safety rules from the owner's brief are built in: no AI or cloud control of motors, and no passenger testing before unoccupied tests
+- The teaching brief is the owner's private prompt file, which is not published
 </details>
 
 <details>
@@ -284,7 +298,7 @@ flowchart LR
     Hub --> Talk[Conversation thread]
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
-    Talk --> Tools[71 tools]
+    Talk --> Tools[72 tools]
     Talk <--> Second[OpenAI, Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
@@ -304,7 +318,7 @@ flowchart LR
 | **Conversation** | The Gemini Live API on its own thread, so the interface never waits on the network |
 | **Crash safety** | Risky native libraries run in helper processes, so a crash costs one feature |
 | **Offline speech** | Vosk for wake words, Whisper for recognition and Windows voices for speech |
-| **Tools** | 71 declared tools, of which 4 always wait for you |
+| **Tools** | 72 declared tools, of which 4 always wait for you |
 | **Memory** | SQLite with word matching, not embeddings |
 | **Secrets** | Windows Credential Manager, through keyring |
 
@@ -315,12 +329,13 @@ alpha/
   audio/       Microphone, speaker and level measurement
   tools/       Everything the assistant can do
   professor/   Teaching lecture slides
+  mentor/      The Wheelix robotics and SLAM mentor
   actions.py   The safety gate
   memory.py    Long-term memory
   lessons.py   Rules learned from you
   remote.py    Phone and tablet page
   watchdog.py  Page watching
-tests/         921 automated tests
+tests/         961 automated tests
 docs/          Technical guide, requirements, licences and verification record
 ```
 

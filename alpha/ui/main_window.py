@@ -47,6 +47,7 @@ from .interpreter_window import InterpreterWindow
 from .hud_widgets import CharacterSwitch, HoloButton, RingGauge, Waveform
 from .memory_dialog import MemoryDialog
 from .presence_gl import make_presence
+from .mentor_window import MentorWindow
 from .professor_window import ProfessorWindow
 from .reader_window import ReaderWindow
 from .remote_dialog import RemoteDialog
@@ -314,6 +315,8 @@ class MainWindow(QMainWindow):
         conversation.reminder_due.connect(self.show_reminder)
         conversation.class_requested.connect(self.open_class)
         conversation.class_message.connect(self._to_class)
+        conversation.mentor_requested.connect(self.open_mentor)
+        self._mentor_window: MentorWindow | None = None
         conversation.interpreter_requested.connect(self.open_interpreter)
         conversation.reader_requested.connect(self.open_reader)
         conversation.aplha_command.connect(self._voice_command)
@@ -684,10 +687,12 @@ class MainWindow(QMainWindow):
         self.tray_action.triggered.connect(self.hide_to_tray)
         self.image_action = QAction("Set this character's picture", self)
         self.image_action.triggered.connect(self.choose_character_image)
-        self.connections_action = QAction("Connections (Notion, Gmail, Grok)", self)
+        self.connections_action = QAction("Connections (OpenAI, Groq, Grok, Notion, Gmail)", self)
         self.connections_action.triggered.connect(self.open_connections)
         self.class_action = QAction("Professor Mode", self)
         self.class_action.triggered.connect(self.open_class)
+        self.mentor_action = QAction("Wheelix mentor (robotics and SLAM)", self)
+        self.mentor_action.triggered.connect(self.open_mentor)
         self.interpreter_action = QAction("Live translation", self)
         self.interpreter_action.triggered.connect(lambda: self.open_interpreter(""))
         self.reader_action = QAction("Translated reader", self)
@@ -701,7 +706,7 @@ class MainWindow(QMainWindow):
         self.restore_image_action = QAction("Bring back my removed picture", self)
         self.restore_image_action.triggered.connect(self.restore_character_image)
         menu.aboutToShow.connect(self._update_image_actions)
-        for action in (self.about_action, self.connections_action, self.class_action, self.interpreter_action, self.reader_action, self.remote_action, self.remote_code_action,
+        for action in (self.about_action, self.connections_action, self.class_action, self.mentor_action, self.interpreter_action, self.reader_action, self.remote_action, self.remote_code_action,
                        self.compact_action, self.fullscreen_action, self.top_action,
                        self.briefing_action, self.skip_ads_action, self.autostart_action, self.tray_action, self.image_action, self.remove_image_action, self.restore_image_action):
             menu.addAction(action)
@@ -746,9 +751,20 @@ class MainWindow(QMainWindow):
         self._conversation.send_text(text)
 
     def open_class(self) -> None:
+        if self._mentor_window is not None and self._mentor_window.in_class:
+            self._conversation.notice.emit("End the Wheelix mentor first, then open Professor Mode.")
+            return
         if self._class_window is None:
             self._class_window = ProfessorWindow(self._conversation, self)
         self._class_window.start_class()
+
+    def open_mentor(self) -> None:
+        if self._class_window is not None and self._class_window.in_class:
+            self._conversation.notice.emit("End Professor Mode first, then open the Wheelix mentor.")
+            return
+        if self._mentor_window is None:
+            self._mentor_window = MentorWindow(self._conversation, self)
+        self._mentor_window.start_class()
 
     def open_interpreter(self, target: str) -> None:
         if self._interpreter_window is None:
@@ -780,7 +796,9 @@ class MainWindow(QMainWindow):
             self.open_connections()
 
     def _to_class(self, text: str) -> None:
-        if self._class_window is not None:
+        if self._mentor_window is not None and self._mentor_window.in_class:
+            self._mentor_window.handle(text)
+        elif self._class_window is not None:
             self._class_window.handle(text)
 
     def set_skip_ads(self, on: bool) -> None:
