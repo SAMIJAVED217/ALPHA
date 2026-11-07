@@ -6,13 +6,16 @@ from alpha.tools.grok import (
     API,
     GROQ_ROOT,
     MODELS,
+    OPENAI_ROOT,
     STAND_IN,
     GrokClient,
     SecondAI,
     choose_groq_model,
     choose_model,
+    choose_openai_model,
     grok_tools,
     groq_client,
+    openai_client,
 )
 from alpha.tools.registry import ToolRefused
 
@@ -171,6 +174,83 @@ def test_a_bad_key_says_so_rather_than_showing_error_400():
 
 def test_with_neither_key_nothing_is_connected():
     assert not SecondAI(GrokClient(lambda: ""), groq_client(lambda: "")).connected()
+
+
+def answering_openai(seen=None, status=200, body=None):
+    def reply(request):
+        if seen is not None:
+            seen.append(request)
+        if status != 200:
+            return httpx.Response(status, json=body or {})
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "gpt-test-9"}, {"id": "gpt-9-mini"}, {"id": "whisper-1"}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "From OpenAI"}}]})
+
+    return openai_client(lambda: "sk-test", httpx.MockTransport(reply))
+
+
+def test_openai_uses_its_own_address_and_the_cheaper_model():
+    seen = []
+    assert answering_openai(seen).ask("hello") == "From OpenAI"
+    assert str(seen[-1].url) == f"{OPENAI_ROOT}/chat/completions"
+    assert b"gpt-9-mini" in seen[-1].content
+    assert seen[-1].headers["authorization"] == "Bearer sk-test"
+
+
+@pytest.mark.parametrize(
+    "offered, best",
+    [
+        (["gpt-5", "gpt-5-mini", "gpt-4.1-mini", "gpt-5-nano"], "gpt-5-mini"),
+        (["gpt-4o-mini", "gpt-4.1-mini", "gpt-4.1"], "gpt-4.1-mini"),
+        (["gpt-5-mini-2025-08-07", "gpt-5-mini"], "gpt-5-mini"),
+        (["gpt-4.1", "gpt-4o"], "gpt-4.1"),
+        (["gpt-5-pro", "gpt-5"], "gpt-5"),
+        (["gpt-4o-mini-realtime-preview", "gpt-4o-mini-tts", "gpt-4o-mini-search-preview", "gpt-4o"], "gpt-4o"),
+    ],
+)
+def test_openais_mini_chat_model_is_preferred(offered, best):
+    assert choose_openai_model(offered) == best
+
+
+@pytest.mark.parametrize("offered", [[], ["whisper-1", "dall-e-3", "text-embedding-3-large"], ["gpt-image-1"]])
+def test_openai_with_no_chat_model_is_reported(offered):
+    with pytest.raises(ToolRefused, match="chat model"):
+        choose_openai_model(offered)
+
+
+def test_an_empty_openai_balance_is_told_so():
+    body = {"error": {"message": "You exceeded your current quota, please check your plan.", "code": "insufficient_quota"}}
+    with pytest.raises(ToolRefused, match="no credits"):
+        answering_openai(status=429, body=body).ask("hello")
+
+
+def test_a_groq_rate_limit_is_not_mistaken_for_an_empty_balance():
+    body = {"error": {"message": "Rate limit reached. Upgrade at https://console.groq.com/settings/billing"}}
+    client = groq_client(lambda: "k", httpx.MockTransport(lambda r: httpx.Response(429, json=body)))
+    with pytest.raises(ToolRefused, match="usage limit"):
+        client.ask("hello")
+
+
+def test_openai_is_tried_first_when_every_key_is_saved():
+    grok = client_answering(body={"choices": [{"message": {"content": "From Grok"}}]})
+    second = SecondAI(grok, answering_groq(), answering_openai())
+    assert second.ask("hello") == "From OpenAI" and second.name == "OpenAI"
+
+
+def test_an_empty_openai_balance_falls_through_to_the_next():
+    body = {"error": {"code": "insufficient_quota"}}
+    second = SecondAI(GrokClient(lambda: ""), answering_groq(), answering_openai(status=429, body=body))
+    assert second.ask("hello") == "From Groq" and second.name == "Groq"
+
+
+def test_openai_alone_counts_as_connected():
+    assert SecondAI(GrokClient(lambda: ""), groq_client(lambda: ""), answering_openai()).connected()
+
+
+def test_without_an_openai_key_the_old_order_stays():
+    second = SecondAI(client_answering(body={"choices": [{"message": {"content": "From Grok"}}]}), answering_groq(),
+                      openai_client(lambda: ""))
+    assert second.ask("hello") == "From Grok"
 
 
 def test_the_answer_says_truthfully_which_ai_gave_it():

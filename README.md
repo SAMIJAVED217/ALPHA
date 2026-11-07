@@ -9,9 +9,9 @@
 ![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-11-0078D4)
 ![Interface](https://img.shields.io/badge/Interface-PySide6%20%2B%20OpenGL-41CD52)
-![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20Grok%20%2F%20Groq-4285F4)
+![AI](https://img.shields.io/badge/AI-Gemini%20Live%20%2B%20OpenAI%20%2F%20Grok%20%2F%20Groq-4285F4)
 ![Tools](https://img.shields.io/badge/Tools-71-FF8C00)
-![Tests](https://img.shields.io/badge/Automated%20tests-903-2EA44F)
+![Tests](https://img.shields.io/badge/Automated%20tests-921-2EA44F)
 ![Languages](https://img.shields.io/badge/Languages-100-8A2BE2)
 
 ![APLHA's live stage reacting to a voice](assets/demo.gif)
@@ -65,11 +65,13 @@ You talk to it, and it answers aloud in real time. It opens apps, handles files,
 </details>
 
 <details>
-<summary><b>🧠 Two AI brains</b>: Gemini and Grok or Groq, chosen by the task</summary>
+<summary><b>🧠 Two AI brains</b>: Gemini plus OpenAI, Grok or Groq, chosen by the task</summary>
 
 - Gemini handles live conversation, pictures, the screen and every computer tool
 - The second AI is asked for hard reasoning, maths, code, long writing and second opinions
-- That is Grok from xAI, or Groq's free models. If one refuses, the other is tried
+- That is OpenAI first, then Grok from xAI, then Groq's free models, depending on which keys are saved
+- If one refuses or its balance runs out, the next is tried
+- OpenAI uses its newest "mini" model, which costs far less than the full one, so a small balance lasts
 - If it fails, Gemini answers itself and says so
 - If Gemini cannot answer a typed message, the second AI stands in. It has no tools, so it can answer but never act
 - Spoken turns need Gemini unless offline listening is on
@@ -190,9 +192,9 @@ Say "watch this page for exam and scholarship". While it is open, APLHA checks e
 </details>
 
 <details>
-<summary><b>🔌 Connections and languages</b>: Notion, Gmail, Grok, Groq and 100 languages</summary>
+<summary><b>🔌 Connections and languages</b>: Notion, Gmail, OpenAI, Grok, Groq and 100 languages</summary>
 
-- Optional Notion, Gmail, Grok and Groq, with keys kept in the Windows Credential Manager
+- Optional Notion, Gmail, OpenAI, Grok and Groq, with keys kept in the Windows Credential Manager
 - Message sending through desktop apps. WhatsApp is tested for real
 - 100 languages to choose from, or matching how you speak
 - The app shows what each speech engine supports for your choice
@@ -268,7 +270,7 @@ Anyone with access to your Windows account could read the unencrypted files.
 | Google Gemini | About me and your 25 strongest rules | Start of each session |
 | Google Gemini | Up to 5 relevant memories | Only when recalled |
 | Google Gemini | Pictures, slides and pages | When you share or use them |
-| xAI or Groq | Questions Gemini passes on | Only with a key saved |
+| OpenAI, xAI or Groq | Questions Gemini passes on | Only with a key saved |
 | Open-Meteo, Google News | City or topic | For weather and news |
 
 The keyword and the text of watched pages are not sent. Say your keyword only while a permission card is showing, because at any other time it is ordinary speech.
@@ -283,7 +285,7 @@ flowchart LR
     Keys[Typing and files] --> Talk
     Talk <--> Gemini[Gemini Live API]
     Talk --> Tools[71 tools]
-    Talk <--> Second[Grok or Groq]
+    Talk <--> Second[OpenAI, Grok or Groq]
     Phone[Phone or tablet page] --> Talk
     Tools --> Gate[Safety gate]
     Gate --> PC[Windows]
@@ -318,7 +320,7 @@ alpha/
   lessons.py   Rules learned from you
   remote.py    Phone and tablet page
   watchdog.py  Page watching
-tests/         903 automated tests
+tests/         921 automated tests
 docs/          Technical guide, requirements, licences and verification record
 ```
 
@@ -380,7 +382,7 @@ Claims here are tested, not assumed. [docs/VERIFICATION.md](docs/VERIFICATION.md
 | Status | Features |
 | --- | --- |
 | **Seen working for real** | Voice conversation, hands-free, voice control of options, the spoken keyword and spoken cancel, Esc, a full Professor Mode class with resume and quiz, spare-model switching, live translation of a real speaker, the translated reader, Groq answering, the camera taking a picture, opening apps, typing, volume, music, weather, news, clipboard, saving a memory, photos, WhatsApp sending, a sample of language replies |
-| **Automated tests only** | Voice calls, video calls, skipping ads, saying confirm, reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, Grok itself, page watching, lock, sleep, shutdown, restart |
+| **Automated tests only** | Voice calls, video calls, skipping ads, saying confirm, reminders, the morning briefing, moving and organising files, undo, closing windows, Gmail, OpenAI, Grok itself, page watching, lock, sleep, shutdown, restart |
 | **Drawn but not yet used for real** | The typed keyword on the permission card |
 | **Page tried, real devices not yet** | Phone and tablet control, tried in a browser against a pretend assistant |
 | **Not yet confirmed for real** | Answers about the screen, recalling a memory, Notion pages, KakaoTalk and other messaging apps |
@@ -403,7 +405,7 @@ On your computer, in `%APPDATA%\ALPHA\memory.sqlite`. It is not encrypted, and i
 <details>
 <summary><b>Is this its own AI model?</b></summary>
 
-No. The thinking comes from Gemini, with Grok or Groq as a second AI. This project is the application around them: real-time sound, tools, memory, safety, interface and teaching.
+No. The thinking comes from Gemini, with OpenAI, Grok or Groq as a second AI. This project is the application around them: real-time sound, tools, memory, safety, interface and teaching.
 </details>
 
 <details>

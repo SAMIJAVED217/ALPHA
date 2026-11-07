@@ -25,7 +25,7 @@ Three design rules explain most of it:
 | Graphics | OpenGL fragment shader | The graphics chip draws the stage, which keeps processor use low |
 | Main AI | Gemini Live API, through `google-genai` | Two-way real-time voice over a live connection |
 | Teaching and reading AI | Gemini text models | Reads whole PDF and picture pages |
-| Second AI | Grok (xAI) or Groq, through `httpx` | Harder thinking, and a stand-in for typed messages |
+| Second AI | OpenAI, Grok (xAI) or Groq, through `httpx` | Harder thinking, and a stand-in for typed messages |
 | Wake words | Vosk, `vosk-model-small-en-us-0.15` | Runs on the PC, with no network |
 | Offline hearing | faster-whisper, `base` model | Turns speech into text on the PC |
 | Offline voice | Windows speech voices | Speaks with no network |
@@ -178,7 +178,7 @@ Personal data lives in `%APPDATA%\ALPHA`, usually `C:\Users\<you>\AppData\Roamin
 
 **The log does not record what was said.** It records events, such as "Hands-free is now turn".
 
-**Credential Manager entries:** `gemini-api`, `xai-key`, `groq-key`, `notion-token`, `owner-keyword`, `gmail-client-id`, `gmail-client-secret` and `gmail-refresh-token`.
+**Credential Manager entries:** `gemini-api`, `openai-key`, `xai-key`, `groq-key`, `notion-token`, `owner-keyword`, `gmail-client-id`, `gmail-client-secret` and `gmail-refresh-token`.
 
 **Important files are written safely.** Most data files are written to a temporary file first, then swapped into place, so a crash cannot leave half a file.
 
@@ -192,7 +192,7 @@ Personal data lives in `%APPDATA%\ALPHA`, usually `C:\Users\<you>\AppData\Roamin
 | Google Gemini | Pictures, screen captures and tool results | When shared or used |
 | Google Gemini | Slides and pages | Professor Mode and the reader |
 | Google Gemini | Continuous sound | Only while live translation runs |
-| xAI or Groq | Questions Gemini passes on, and typed messages if Gemini fails | Only with a key saved |
+| OpenAI, xAI or Groq | Questions Gemini passes on, and typed messages if Gemini fails | Only with a key saved |
 | Notion, Gmail | Your requests | Only when connected and used |
 | Open-Meteo | City name | Weather |
 | Google News | Topic | News |
@@ -304,9 +304,9 @@ Sensitive rules are refused. Rules only shape replies, because every safety rule
 | Slides and page translation | `gemini-3.8-flash` | Spares below |
 | Spare models | `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite` | Used in order, and always shown on screen |
 | Reader voice | `gemini-3.8-flash-tts` | Voice Kore |
-| Second AI | Newest suitable Grok or Groq model | Chosen from the provider's own list |
+| Second AI | OpenAI's newest "mini" model, or the newest suitable Grok or Groq model | Chosen from the provider's own list |
 
-**The second AI has no tools**, so it can answer but never act. xAI is tried first if its key is saved, then Groq, so a refused key does not end the answer. Gemini decides when to use it, from the task. The two talk only through `ask_grok`, so Grok does not see the conversation.
+**The second AI has no tools**, so it can answer but never act. The order is OpenAI, then xAI, then Groq, among those with a saved key, so a refused key or an empty balance does not end the answer. OpenAI's "mini" model is chosen because it costs far less than the full model, so a small prepaid balance lasts. The full model is used only if no mini is offered. Gemini decides when to use it, from the task. The two talk only through `ask_grok`, so Grok does not see the conversation.
 
 **Offline mode** replaces hearing and speaking only. Whisper hears you and a Windows voice replies, but Gemini or the second AI still does the thinking.
 
@@ -391,7 +391,7 @@ Gmail uses Google's sign-in with PKCE through a temporary local address, and ask
 
 ## Testing
 
-There are 903 automated tests, run with pytest. A safe test run changes nothing real:
+There are 921 automated tests, run with pytest. A safe test run changes nothing real:
 
 - `ALPHA_HOME` points to a temporary folder, and `data_dir` refuses the real one under test.
 - Credential Manager is replaced with an in-memory store.
@@ -425,7 +425,7 @@ A Windows desktop assistant in Python that connects Gemini's live voice AI to re
 <details>
 <summary><b>Is it your own AI model?</b></summary>
 
-No. The intelligence comes from Gemini, with Grok or Groq as a second AI. What is built here is the application around them: real-time audio, tools, memory, safety, interface and teaching modes.
+No. The intelligence comes from Gemini, with OpenAI, Grok or Groq as a second AI. What is built here is the application around them: real-time audio, tools, memory, safety, interface and teaching modes.
 </details>
 
 <details>
@@ -509,11 +509,11 @@ It is the owner's chosen spelling, pronounced "Alpha".
 <details>
 <summary><b>What does it cost to run?</b></summary>
 
-The app has no charge of its own. It uses your own API keys, so costs and limits depend on each provider's plan. Gemini's free tier has daily limits, and Groq offers free models.
+The app has no charge of its own. It uses your own API keys, so costs and limits depend on each provider's plan. Gemini's free tier has daily limits, and Groq offers free models. OpenAI is prepaid, so it stops when the balance is spent, and APLHA then moves on to the next AI.
 </details>
 
 <details>
 <summary><b>How much of it has really been tested?</b></summary>
 
-There are 903 automated tests, and a separate record of what has been seen working for real. Some features have only automated tests so far, and the record says which.
+There are 921 automated tests, and a separate record of what has been seen working for real. Some features have only automated tests so far, and the record says which.
 </details>

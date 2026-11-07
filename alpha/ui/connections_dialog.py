@@ -1,4 +1,4 @@
-"""Connect Notion, Gmail and Grok. Everything entered here goes to the Credential Manager."""
+"""Connect Notion, Gmail, OpenAI, Grok and Groq. Everything entered here goes to the Credential Manager."""
 
 from __future__ import annotations
 
@@ -34,13 +34,14 @@ def _in_background(work, *arguments) -> Future:
 
 
 class ConnectionsDialog(QDialog):
-    def __init__(self, parent=None, notion_client=None, grok_client=None, groq_client=None):
+    def __init__(self, parent=None, notion_client=None, grok_client=None, groq_client=None, openai_client=None):
         super().__init__(parent)
         self.setWindowTitle("APLHA connections")
         self.setMinimumWidth(520)
         self._notion = notion_client or notion.NotionClient()
         self._grok = grok_client or grok.GrokClient()
         self._groq = groq_client or grok.groq_client()
+        self._openai = openai_client or grok.openai_client()
 
         heading = QLabel("Connections")
         heading.setObjectName("heading")
@@ -54,6 +55,11 @@ class ConnectionsDialog(QDialog):
         self.grok_key = self._secret_field(grok.KEY_ACCOUNT, "Paste your xAI API key")
         self.grok_button, self.grok_status = self._connect_row(
             "Grok", grok.KEY_ACCOUNT, lambda: self._check("Grok", self.grok_button, self.grok_status, self._grok.check)
+        )
+        self.openai_key = self._secret_field(grok.OPENAI_KEY_ACCOUNT, "Paste your OpenAI API key")
+        self.openai_button, self.openai_status = self._connect_row(
+            "OpenAI", grok.OPENAI_KEY_ACCOUNT,
+            lambda: self._check("OpenAI", self.openai_button, self.openai_status, self._openai.check),
         )
         self.groq_key = self._secret_field(grok.GROQ_KEY_ACCOUNT, "Paste your free Groq API key")
         self.groq_button, self.groq_status = self._connect_row(
@@ -75,6 +81,7 @@ class ConnectionsDialog(QDialog):
         form = QFormLayout()
         for name, field, button, status in (
             ("Notion token", self.notion_token, self.notion_button, self.notion_status),
+            ("OpenAI key", self.openai_key, self.openai_button, self.openai_status),
             ("Groq key (free)", self.groq_key, self.groq_button, self.groq_status),
             ("Grok (xAI) key", self.grok_key, self.grok_button, self.grok_status),
         ):
@@ -124,6 +131,7 @@ class ConnectionsDialog(QDialog):
             (notion.TOKEN_ACCOUNT, self.notion_token),
             (grok.KEY_ACCOUNT, self.grok_key),
             (grok.GROQ_KEY_ACCOUNT, self.groq_key),
+            (grok.OPENAI_KEY_ACCOUNT, self.openai_key),
             (keystore.KEYWORD_ACCOUNT, self.keyword),
             (gmail.CLIENT_ID_ACCOUNT, self.gmail_id),
             (gmail.CLIENT_SECRET_ACCOUNT, self.gmail_secret),

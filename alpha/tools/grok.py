@@ -1,6 +1,6 @@
-"""The second AI: Grok through xAI, or free models through Groq, a different company.
+"""The second AI: OpenAI, Grok through xAI, or free models through Groq, a different company.
 
-Keys are kept in the Credential Manager, and xAI is used when both are saved. The second
+Keys are kept in the Credential Manager. OpenAI is tried first, then xAI, then Groq. The second
 AI helps Gemini with harder thinking, and stands in for a typed message when Gemini
 cannot answer. It has no tools, so it can never act on the computer.
 """
@@ -20,6 +20,8 @@ API = f"{ROOT}/chat/completions"
 MODELS = f"{ROOT}/models"
 GROQ_KEY_ACCOUNT = "groq-key"
 GROQ_ROOT = "https://api.groq.com/openai/v1"
+OPENAI_KEY_ACCOUNT = "openai-key"
+OPENAI_ROOT = "https://api.openai.com/v1"
 LONGEST_QUESTION = 8_000
 LONGEST_ANSWER = 8_000
 STAND_IN = (
@@ -58,6 +60,34 @@ def choose_groq_model(names: list[str]) -> str:
     return max(usable, key=lambda name: ("versatile" in name, name))
 
 
+_OPENAI_NOT_FOR_CHAT = re.compile(
+    r"realtime|audio|tts|transcribe|search|image|embed|moderation|instruct|codex|computer|preview|nano|pro\b|oss|chat-latest",
+    re.IGNORECASE,
+)
+_SNAPSHOT = re.compile(r"-\d{4}(?:-\d{2}-\d{2})?$")
+_GPT_VERSION = re.compile(r"gpt-(\d+)(?:\.(\d+))?")
+
+
+def choose_openai_model(names: list[str]) -> str:
+    """The newest 'mini' chat model, which costs far less than the full one, so a small balance lasts.
+    The full model is used only when no mini is offered. Dated snapshots are skipped for the plain name."""
+
+    def rank(name: str) -> tuple[bool, int, int]:
+        version = _GPT_VERSION.match(name)
+        return "mini" in name, int(version[1]), int(version[2] or 0)
+
+    usable = [
+        name for name in names
+        if _GPT_VERSION.match(name) and not _OPENAI_NOT_FOR_CHAT.search(name) and not _SNAPSHOT.search(name)
+    ]
+    if not usable:
+        raise ToolRefused("OpenAI did not offer a chat model to this key.")
+    return max(usable, key=rank)
+
+
+_NO_BALANCE = re.compile(r"credit|insufficient_quota|current quota", re.IGNORECASE)
+
+
 class GrokClient:
     def __init__(self, load_key=lambda: keystore.load_secret(KEY_ACCOUNT), transport=None,
                  root=ROOT, name="Grok", picker=choose_model):
@@ -79,7 +109,7 @@ class GrokClient:
             response = client.request(method, address, headers={"Authorization": f"Bearer {key}"}, json=body)
         except httpx.HTTPError as error:
             raise ToolRefused(f"{self.name} could not be reached ({type(error).__name__}).") from error
-        if response.status_code >= 400 and "credit" in response.text.lower():
+        if response.status_code >= 400 and _NO_BALANCE.search(response.text):
             raise ToolRefused(f"{self.name} says this account has no credits left.")
         refused = response.status_code in (401, 403) or (response.status_code == 400 and "key" in response.text.lower())
         if refused:
@@ -135,10 +165,17 @@ def groq_client(load_key=lambda: keystore.load_secret(GROQ_KEY_ACCOUNT), transpo
     return GrokClient(load_key, transport, GROQ_ROOT, "Groq", picker)
 
 
-class SecondAI:
-    """Tries xAI when its key is saved, then Groq, so a refused key does not end the answer."""
+def openai_client(load_key=lambda: keystore.load_secret(OPENAI_KEY_ACCOUNT), transport=None,
+                  picker=choose_openai_model) -> GrokClient:
+    return GrokClient(load_key, transport, OPENAI_ROOT, "OpenAI", picker)
 
-    def __init__(self, xai: GrokClient | None = None, groq: GrokClient | None = None):
+
+class SecondAI:
+    """Tries each saved key in turn, OpenAI, then xAI, then Groq, so a refused key or an empty
+    balance does not end the answer."""
+
+    def __init__(self, xai: GrokClient | None = None, groq: GrokClient | None = None, openai: GrokClient | None = None):
+        self._openai = openai or openai_client()
         self._xai = xai or GrokClient()
         self._groq = groq or groq_client()
         self._answered_by = ""
@@ -148,10 +185,10 @@ class SecondAI:
         return self._answered_by or self._in_order()[0].name
 
     def _in_order(self) -> list[GrokClient]:
-        return [client for client in (self._xai, self._groq) if client.connected()] or [self._groq]
+        return [client for client in (self._openai, self._xai, self._groq) if client.connected()] or [self._groq]
 
     def connected(self) -> bool:
-        return self._xai.connected() or self._groq.connected()
+        return any(client.connected() for client in (self._openai, self._xai, self._groq))
 
     def _first_that_answers(self, call) -> str:
         clients = self._in_order()
@@ -179,8 +216,9 @@ def grok_tools(client) -> list[Tool]:
     return [
         Tool(
             "ask_grok",
-            "Send a question to the second AI for harder thinking, or when the owner asks for it. That is Grok "
-            "from xAI, or Groq's free models if only Groq is connected. The question leaves this computer.",
+            "Send a question to the second AI for harder thinking, or when the owner asks for it, or for ChatGPT, "
+            "Grok or Groq. That is OpenAI, Grok from xAI, or Groq's free models, whichever is connected and answers "
+            "first. The question leaves this computer.",
             {"question": (STRING, "The full question, with no private details the owner did not ask to share.")},
             ("question",),
             run=ask,

@@ -37,11 +37,26 @@ def closed_on_this_thread(qapp):
     gc.collect()
 
 
-def dialog(qapp, notion_check=None, grok_check=None):
+def dialog(qapp, notion_check=None, grok_check=None, openai_check=None):
     opened.append(
-        ConnectionsDialog(notion_client=notion_check or Check(), grok_client=grok_check or Check(), groq_client=Check())
+        ConnectionsDialog(notion_client=notion_check or Check(), grok_client=grok_check or Check(), groq_client=Check(),
+                          openai_client=openai_check or Check())
     )
     return opened[-1]
+
+
+def test_connect_saves_a_pasted_openai_key_and_says_it_worked(qapp):
+    made = dialog(qapp)
+    made.openai_key.setText("sk-key")
+    made.openai_button.click()
+    assert spin_until(lambda: made.openai_status.text() == "OpenAI is connected.")
+    assert keystore.load_secret(grok.OPENAI_KEY_ACCOUNT) == "sk-key"
+
+
+def test_the_openai_key_is_hidden_while_typed(qapp):
+    from PySide6.QtWidgets import QLineEdit
+
+    assert dialog(qapp).openai_key.echoMode() == QLineEdit.EchoMode.Password
 
 
 def test_connect_saves_a_pasted_groq_key_and_says_it_worked(qapp):
